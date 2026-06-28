@@ -13,12 +13,16 @@
     <!-- SheetJS para Exportación a Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
+    <!-- FIREBASE SDK (Compat Version para máxima compatibilidad con Vanilla JS) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        primary: 'var(--color-primary)', // Configurable dinámicamente
+                        primary: 'var(--color-primary)', 
                         secondary: '#3b82f6',
                         accent: '#fbbf24',
                     }
@@ -27,9 +31,8 @@
         }
     </script>
     <style>
-        /* Estilos personalizados adicionales */
         :root {
-            --color-primary: #1e3a8a; /* Azul por defecto */
+            --color-primary: #1e3a8a; 
         }
         body { font-family: 'Inter', system-ui, sans-serif; }
         .glass-effect {
@@ -41,13 +44,11 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        /* Scrollbar personalizado */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        /* Clases auxiliares dinámicas para Tailwind en caso de que variables no enganchen a tiempo */
         .dyn-bg-primary { background-color: var(--color-primary) !important; }
         .dyn-text-primary { color: var(--color-primary) !important; }
         .dyn-border-primary { border-color: var(--color-primary) !important; }
@@ -67,6 +68,20 @@
 
     <!-- LÓGICA DE LA APLICACIÓN -->
     <script>
+        // --- 1. CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDVjVhJWhK3g1Yv0z9Yx1YLfpsX2bOGeCg",
+            authDomain: "sistema-notarial-uafe.firebaseapp.com",
+            projectId: "sistema-notarial-uafe",
+            storageBucket: "sistema-notarial-uafe.firebasestorage.app",
+            messagingSenderId: "412500807010",
+            appId: "1:412500807010:web:4466cbccc2cf8ecc5df03b"
+        };
+        
+        // Inicializar Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
         // --- CONFIGURACIÓN DINÁMICA DE LA INTERFAZ ---
         let sysConfig = JSON.parse(localStorage.getItem('notarySysConfig')) || {
             tituloApp: 'NotarySaaS',
@@ -80,21 +95,13 @@
             const titleElements = document.querySelectorAll('.app-title-text');
             titleElements.forEach(el => el.innerText = sysConfig.tituloApp);
         }
-        aplicarConfiguracion(); // Aplicar al cargar
+        aplicarConfiguracion();
 
-        // --- 1. BASE DE DATOS EN MEMORIA (Estado de la App) ---
-        const MOCK_DB = {
-            notarias: [
-                { id: 1, nombre: "Notaría 11" },
-                { id: 2, nombre: "Notaría Primera" }
-            ],
-            users: [
-                { id: 1, username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' },
-                { id: 2, username: 'oficial11', password: '123', role: 2, notariaId: 1, nombre: 'Oficial Notaría 11' },
-                { id: 3, username: 'matrizador11', password: '123', role: 3, notariaId: 1, nombre: 'Juan Pérez (Matrizador)' },
-                { id: 4, username: 'oficial1', password: '123', role: 2, notariaId: 2, nombre: 'Oficial Notaría 1' }
-            ],
-            actos: [] // Almacenará los actos creados
+        // --- 2. BASE DE DATOS LOCAL (Sincronizada con Firebase) ---
+        const LOCAL_DB = {
+            notarias: [],
+            users: [],
+            actos: [] 
         };
 
         const CATEGORIAS = {
@@ -113,15 +120,40 @@
             ]
         };
 
-        // Estado actual
         let state = {
             currentUser: null,
-            currentView: 'login', // login, dashboard, usuarios, actos, reportes, riesgos
-            filtroNotariaReporte: null // Para el rol 1 en reportes
+            currentView: 'login',
+            filtroNotariaReporte: null
         };
 
-        // --- 2. FUNCIONES PRINCIPALES DE RENDERIZADO ---
+        // --- CARGAR DATOS DESDE LA NUBE ---
+        async function loadDataFromFirebase() {
+            try {
+                // 1. Cargar Usuarios
+                const usersSnap = await db.collection('users').get();
+                LOCAL_DB.users = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+                // 2. Cargar Notarías
+                const notariasSnap = await db.collection('notarias').get();
+                LOCAL_DB.notarias = notariasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // 3. Cargar Actos
+                const actosSnap = await db.collection('actos').get();
+                LOCAL_DB.actos = actosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // 4. Semilla: Crear SuperAdmin si no existe
+                if (LOCAL_DB.users.length === 0) {
+                    const adminData = { username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' };
+                    const adminRef = await db.collection('users').add(adminData);
+                    LOCAL_DB.users.push({ id: adminRef.id, ...adminData });
+                }
+            } catch (error) {
+                console.error("Error al cargar datos de Firebase:", error);
+                Swal.fire('Error', 'No se pudo establecer conexión con la base de datos en la nube.', 'error');
+            }
+        }
+
+        // --- FUNCIONES PRINCIPALES DE RENDERIZADO ---
         function renderApp() {
             const app = document.getElementById('app');
             if (!state.currentUser) {
@@ -130,7 +162,7 @@
                 app.innerHTML = getLayoutHTML();
                 renderCurrentView();
             }
-            aplicarConfiguracion(); // Reaplicar textos si la vista cambió
+            aplicarConfiguracion();
         }
 
         function renderCurrentView() {
@@ -149,8 +181,7 @@
             aplicarConfiguracion();
         }
 
-        // --- 3. COMPONENTES HTML (Plantillas) ---
-
+        // --- COMPONENTES HTML (Plantillas) ---
         function getLoginHTML() {
             return `
                 <div class="flex items-center justify-center h-full w-full bg-gradient-to-br dyn-bg-primary to-blue-800" style="background-color: var(--color-primary);">
@@ -196,7 +227,7 @@
 
         function getLayoutHTML() {
             const roleName = state.currentUser.role === 1 ? 'SuperAdmin' : (state.currentUser.role === 2 ? 'Oficial de Cumplimiento' : 'Matrizador');
-            const notariaName = state.currentUser.notariaId ? MOCK_DB.notarias.find(n => n.id === state.currentUser.notariaId).nombre : 'Global';
+            const notariaName = state.currentUser.notariaId ? LOCAL_DB.notarias.find(n => n.id === state.currentUser.notariaId)?.nombre : 'Global';
 
             return `
                 <!-- Topbar -->
@@ -230,7 +261,6 @@
                 </header>
 
                 <div class="flex flex-1 overflow-hidden">
-                    <!-- Sidebar -->
                     <aside class="w-64 dyn-bg-primary text-white flex-shrink-0 overflow-y-auto hidden md:block">
                         <nav class="p-4 space-y-1">
                             <p class="px-3 text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 mt-4">Principal</p>
@@ -258,7 +288,6 @@
                         </nav>
                     </aside>
 
-                    <!-- Main Content -->
                     <main id="main-content" class="flex-1 overflow-y-auto p-6 bg-gray-50 fade-in">
                         <!-- Vista dinámica -->
                     </main>
@@ -295,8 +324,6 @@
                 </div>
             `;
             showModal(html);
-            
-            // Sync color picker with text
             document.getElementById('config_color').addEventListener('input', function(e) {
                 document.getElementById('config_color_text').value = e.target.value;
             });
@@ -304,26 +331,15 @@
 
         function guardarConfiguracion(e) {
             e.preventDefault();
-            const nuevoTitulo = document.getElementById('config_titulo').value;
-            const nuevoColor = document.getElementById('config_color').value;
-
             sysConfig = {
-                tituloApp: nuevoTitulo,
-                colorPrincipal: nuevoColor
+                tituloApp: document.getElementById('config_titulo').value,
+                colorPrincipal: document.getElementById('config_color').value
             };
-
             localStorage.setItem('notarySysConfig', JSON.stringify(sysConfig));
             aplicarConfiguracion();
-            
             closeModal();
-            Swal.fire({ icon: 'success', title: 'Interfaz Actualizada', text: 'Los cambios se han aplicado y guardado exitosamente.', timer: 1500, showConfirmButton: false });
-            
-            // Re-render layout to catch any direct class changes
-            setTimeout(() => {
-                const navDashboard = state.currentView;
-                renderApp();
-                navigate(navDashboard); // Restaurar vista
-            }, 300);
+            Swal.fire({ icon: 'success', title: 'Interfaz Actualizada', text: 'Los cambios se han aplicado exitosamente.', timer: 1500, showConfirmButton: false });
+            setTimeout(() => { const navDashboard = state.currentView; renderApp(); navigate(navDashboard); }, 300);
         }
 
         function getDashboardHTML() {
@@ -384,16 +400,15 @@
                             <table class="w-full text-left border-collapse">
                                 <thead>
                                     <tr class="bg-gray-50 text-gray-600 text-sm border-b">
-                                        <th class="p-4 font-semibold w-40">Acciones</th>
                                         <th class="p-4 font-semibold">ID Sistema</th>
                                         <th class="p-4 font-semibold">Nº Trámite</th>
                                         <th class="p-4 font-semibold">Categoría del Acto</th>
                                         <th class="p-4 font-semibold">Tipo</th>
                                         <th class="p-4 font-semibold">Fecha</th>
+                                        <th class="p-4 font-semibold w-40 text-right">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="actos-table-body" class="divide-y divide-gray-100">
-                                    <!-- Los actos se cargarán aquí -->
                                 </tbody>
                             </table>
                         </div>
@@ -407,13 +422,11 @@
             const buscadorInput = document.getElementById('buscador-actos');
             if(!tbody) return;
 
-            // Filtrar actos por notaría si es rol 2 o 3
-            let actosMostrar = MOCK_DB.actos;
+            let actosMostrar = LOCAL_DB.actos;
             if (state.currentUser.role !== 1) {
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
             }
 
-            // Filtrar por término de búsqueda (Secuencial o Número de acto)
             const termino = buscadorInput ? buscadorInput.value.toLowerCase() : '';
             if (termino.trim() !== '') {
                 actosMostrar = actosMostrar.filter(a => {
@@ -422,7 +435,6 @@
                 });
             }
 
-            // Ordenar por fecha (más reciente primero)
             actosMostrar.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
             if (actosMostrar.length === 0) {
@@ -436,22 +448,6 @@
                 
                 return `
                 <tr class="hover:bg-blue-50/50 transition-colors group">
-                    <td class="p-4 whitespace-nowrap">
-                        <div class="flex items-center gap-2">
-                            <button onclick="openIntervinientesModal(${acto.id})" class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-colors" title="Gestionar Intervinientes">
-                                <i class="fas fa-users"></i>
-                            </button>
-                            <button onclick="openEditActoModal(${acto.id})" class="w-8 h-8 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors" title="Editar Detalles (Cuantía, Pago)">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button onclick="descargarFormulario(${acto.id})" class="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-600 hover:text-white flex items-center justify-center transition-colors" title="Descargar Formulario">
-                                <i class="fas fa-file-download"></i>
-                            </button>
-                            <button onclick="eliminarActo(${acto.id})" class="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-600 hover:text-white flex items-center justify-center transition-colors" title="Eliminar Acto">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </div>
-                    </td>
                     <td class="p-4 font-bold text-gray-800">${seqStr}</td>
                     <td class="p-4 text-sm font-medium text-gray-700">${numTramiteHtml}</td>
                     <td class="p-4 text-sm text-gray-600">${acto.categoria}</td>
@@ -461,11 +457,27 @@
                         </span>
                     </td>
                     <td class="p-4 text-sm text-gray-500 whitespace-nowrap"><i class="far fa-calendar-alt mr-1"></i> ${acto.fecha}</td>
+                    <td class="p-4 whitespace-nowrap">
+                        <div class="flex items-center justify-end gap-2">
+                            <button onclick="openIntervinientesModal('${acto.id}')" class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-colors" title="Gestionar Intervinientes">
+                                <i class="fas fa-users"></i>
+                            </button>
+                            <button onclick="openEditActoModal('${acto.id}')" class="w-8 h-8 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors" title="Editar Detalles (Cuantía, Pago)">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="descargarFormulario('${acto.id}')" class="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-600 hover:text-white flex items-center justify-center transition-colors" title="Descargar Formulario">
+                                <i class="fas fa-file-download"></i>
+                            </button>
+                            <button onclick="eliminarActo('${acto.id}')" class="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-600 hover:text-white flex items-center justify-center transition-colors" title="Eliminar Acto">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </td>
                 </tr>
             `}).join('');
         }
 
-        // --- LÓGICA DE MODALES DE ACTOS (Funciones mantenidas de la versión anterior) ---
+        // --- LÓGICA DE MODALES Y FIREBASE DE ACTOS ---
         function openNuevoActoModal() {
             const html = `
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all fade-in">
@@ -522,30 +534,43 @@
                 opciones.map(opt => `<option value="${opt}">${opt}</option>`).join('');
         }
 
-        function guardarNuevoActo(e) {
+        async function guardarNuevoActo(e) {
             e.preventDefault();
+            Swal.fire({ title: 'Guardando en la nube...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+
             const tipo = document.querySelector('input[name="tipo_tramite"]:checked').value;
             const numero = document.getElementById('acto_numero').value;
             const fecha = document.getElementById('acto_fecha').value;
             const categoria = document.getElementById('acto_categoria').value;
-            const notariaId = state.currentUser.role === 1 ? (state.currentUser.notariaId || 1) : state.currentUser.notariaId;
+            const notariaId = state.currentUser.notariaId;
 
-            // Calcular el número secuencial para esta notaría
-            const actosNotaria = MOCK_DB.actos.filter(a => a.notariaId === notariaId);
+            const actosNotaria = LOCAL_DB.actos.filter(a => a.notariaId === notariaId);
             const maxSecuencial = actosNotaria.reduce((max, a) => Math.max(max, a.secuencial || 0), 0);
             const nuevoSecuencial = maxSecuencial + 1;
 
-            MOCK_DB.actos.push({
-                id: Date.now(), notariaId: notariaId, secuencial: nuevoSecuencial, tipo: tipo, numero: numero, categoria: categoria, fecha: fecha,
-                cuantia: '', forma_pago: '', intervinientes: []
-            });
-            closeModal();
-            Swal.fire({ icon: 'success', title: 'Guardado', text: 'El acto ha sido registrado exitosamente.', timer: 1500, showConfirmButton: false });
-            if (state.currentView === 'actos') renderActosTable();
+            const nuevoActoData = { 
+                notariaId: notariaId, secuencial: nuevoSecuencial, tipo: tipo, numero: numero, 
+                categoria: categoria, fecha: fecha, cuantia: '', forma_pago: '', intervinientes: [] 
+            };
+
+            try {
+                // Guardar en Firestore
+                const docRef = await db.collection('actos').add(nuevoActoData);
+                nuevoActoData.id = docRef.id;
+                
+                // Actualizar Memoria Local
+                LOCAL_DB.actos.push(nuevoActoData);
+                closeModal();
+                Swal.fire({ icon: 'success', title: 'Guardado', text: 'El acto ha sido registrado exitosamente.', timer: 1500, showConfirmButton: false });
+                if (state.currentView === 'actos') renderActosTable();
+            } catch (error) {
+                console.error(error);
+                Swal.fire('Error', 'No se pudo guardar en la base de datos.', 'error');
+            }
         }
 
         function openEditActoModal(actoId) {
-            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
 
             const html = `
@@ -554,7 +579,7 @@
                         <h3 class="text-lg font-bold text-gray-800">Completar Datos del Acto</h3>
                         <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                     </div>
-                    <form onsubmit="guardarEdicionActo(event, ${actoId})" class="p-6 space-y-6">
+                    <form onsubmit="guardarEdicionActo(event, '${actoId}')" class="p-6 space-y-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Número de Trámite</label>
@@ -589,23 +614,36 @@
             showModal(html);
         }
 
-        function guardarEdicionActo(e, actoId) {
+        async function guardarEdicionActo(e, actoId) {
             e.preventDefault();
-            const actoIndex = MOCK_DB.actos.findIndex(a => a.id === actoId);
+            Swal.fire({ title: 'Actualizando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+
+            const actoIndex = LOCAL_DB.actos.findIndex(a => a.id === actoId);
             if(actoIndex === -1) return;
 
-            MOCK_DB.actos[actoIndex].numero = document.getElementById('edit_numero').value;
-            MOCK_DB.actos[actoIndex].fecha = document.getElementById('edit_fecha').value;
-            MOCK_DB.actos[actoIndex].cuantia = document.getElementById('edit_cuantia').value;
-            MOCK_DB.actos[actoIndex].forma_pago = document.getElementById('edit_forma_pago').value;
+            const updateData = {
+                numero: document.getElementById('edit_numero').value,
+                fecha: document.getElementById('edit_fecha').value,
+                cuantia: document.getElementById('edit_cuantia').value,
+                forma_pago: document.getElementById('edit_forma_pago').value
+            };
 
-            closeModal();
-            Swal.fire({ icon: 'success', title: 'Actualizado', text: 'Datos guardados correctamente.', timer: 1500, showConfirmButton: false });
-            if (state.currentView === 'actos') renderActosTable();
+            try {
+                await db.collection('actos').doc(actoId).update(updateData);
+                
+                // Update Local
+                LOCAL_DB.actos[actoIndex] = { ...LOCAL_DB.actos[actoIndex], ...updateData };
+                
+                closeModal();
+                Swal.fire({ icon: 'success', title: 'Actualizado', text: 'Datos guardados en la nube.', timer: 1500, showConfirmButton: false });
+                if (state.currentView === 'actos') renderActosTable();
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo actualizar el registro.', 'error');
+            }
         }
 
         function descargarFormulario(actoId) {
-            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
             const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
 
@@ -635,13 +673,12 @@
                 });
             }
             contenido += `====================================================\n`;
-            contenido += `Sistema de Gestión Notarial - Generado automáticamente\n`;
 
             const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Formulario_Acto_${acto.numero}.txt`;
+            a.download = `Formulario_${seqStr}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -649,10 +686,9 @@
         }
 
         function openIntervinientesModal(actoId) {
-            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
 
-            // Variables temporales para no guardar hasta confirmar
             window._tempIntervinientes = JSON.parse(JSON.stringify(acto.intervinientes));
             window._editIndex = -1;
 
@@ -676,7 +712,7 @@
             const html = `
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden transform transition-all fade-in flex flex-col max-h-[90vh]">
                     <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800">Gestión de Intervinientes - Acto ${acto.numero}</h3>
+                        <h3 class="text-lg font-bold text-gray-800">Gestión de Intervinientes</h3>
                         <button onclick="cancelarIntervinientes()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
@@ -712,10 +748,9 @@
                             </form>
                         </div>
                     </div>
-                    <!-- Footer con botones de confirmación -->
                     <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
                         <button type="button" onclick="cancelarIntervinientes()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-100 transition-colors">Cancelar</button>
-                        <button type="button" onclick="guardarIntervinientes(${actoId})" class="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"><i class="fas fa-save mr-1"></i> Guardar y Cerrar</button>
+                        <button type="button" onclick="guardarIntervinientes('${actoId}')" class="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"><i class="fas fa-save mr-1"></i> Guardar y Cerrar</button>
                     </div>
                 </div>
             `;
@@ -745,14 +780,12 @@
             };
 
             if (window._editIndex >= 0) {
-                // Modo Edición
                 window._tempIntervinientes[window._editIndex] = nuevoInt;
                 window._editIndex = -1;
                 document.getElementById('form_title_int').innerText = "Agregar Nuevo";
                 document.getElementById('btn_submit_int').innerHTML = '<i class="fas fa-plus mr-1"></i> Agregar Interviniente';
                 document.getElementById('btn_submit_int').className = "w-full py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors";
             } else {
-                // Modo Agregar
                 window._tempIntervinientes.push(nuevoInt);
             }
             
@@ -764,7 +797,7 @@
         function eliminarInterviniente(index) {
             Swal.fire({
                 title: '¿Está seguro?',
-                text: "Desea eliminar a este interviniente del registro.",
+                text: "Desea eliminar a este interviniente del registro temporal.",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
@@ -779,21 +812,24 @@
             });
         }
 
-        window.guardarIntervinientes = function(actoId) {
-            const acto = MOCK_DB.actos.find(a => a.id === actoId);
-            if(acto) {
-                acto.intervinientes = window._tempIntervinientes;
+        window.guardarIntervinientes = async function(actoId) {
+            Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            try {
+                await db.collection('actos').doc(actoId).update({ intervinientes: window._tempIntervinientes });
+                const acto = LOCAL_DB.actos.find(a => a.id === actoId);
+                if(acto) acto.intervinientes = window._tempIntervinientes;
+                closeModal();
+                Swal.fire({ icon: 'success', title: 'Guardado', text: 'Intervinientes sincronizados con la nube.', timer: 1500, showConfirmButton: false });
+            } catch (error) {
+                Swal.fire('Error', 'No se pudieron guardar los intervinientes.', 'error');
             }
-            closeModal();
-            Swal.fire({ icon: 'success', title: 'Guardado', text: 'Intervinientes actualizados.', timer: 1500, showConfirmButton: false });
         };
 
         window.cancelarIntervinientes = function() {
-            // Si hay algún interviniente en la lista temporal, solicitamos confirmación.
             if (window._tempIntervinientes && window._tempIntervinientes.length > 0) {
                 Swal.fire({
                     title: '¿Está seguro de salir?',
-                    text: "No se guardarán los cambios que no haya confirmado.",
+                    text: "No se guardarán los cambios que no haya confirmado en la nube.",
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonColor: '#d33',
@@ -801,9 +837,7 @@
                     confirmButtonText: 'Sí, salir sin guardar',
                     cancelButtonText: 'Seguir editando'
                 }).then((result) => {
-                    if (result.isConfirmed) {
-                        closeModal();
-                    }
+                    if (result.isConfirmed) closeModal();
                 });
             } else {
                 closeModal();
@@ -813,22 +847,27 @@
         function eliminarActo(actoId) {
             Swal.fire({
                 title: '¿Está seguro que desea eliminar este acto?',
-                text: "Esta acción no se puede deshacer.",
+                text: "Esta acción lo borrará permanentemente de la nube.",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
                 cancelButtonColor: '#3085d6',
                 confirmButtonText: 'Sí, eliminar',
                 cancelButtonText: 'Cancelar'
-            }).then((result) => {
+            }).then(async (result) => {
                 if (result.isConfirmed) {
-                    MOCK_DB.actos = MOCK_DB.actos.filter(a => a.id !== actoId);
-                    if (state.currentView === 'actos') renderActosTable();
-                    Swal.fire('Eliminado!', 'El acto ha sido eliminado.', 'success');
+                    Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+                    try {
+                        await db.collection('actos').doc(actoId).delete();
+                        LOCAL_DB.actos = LOCAL_DB.actos.filter(a => a.id !== actoId);
+                        if (state.currentView === 'actos') renderActosTable();
+                        Swal.fire('Eliminado!', 'El acto ha sido eliminado de la nube.', 'success');
+                    } catch (error) {
+                        Swal.fire('Error', 'No se pudo eliminar el registro.', 'error');
+                    }
                 }
             });
         }
-
 
         // --- MÓDULO DE REPORTES Y DESCARGA EXCEL (.xlsx) ---
         function getReportesHTML() {
@@ -839,7 +878,7 @@
                         <label class="font-medium text-gray-700">Seleccionar Notaría:</label>
                         <select id="filtro_notaria" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none dyn-border-primary" onchange="cambiarFiltroReportes(this.value)">
                             <option value="">Todas las Notarías (Consolidado)</option>
-                            ${MOCK_DB.notarias.map(n => `<option value="${n.id}" ${state.filtroNotariaReporte == n.id ? 'selected':''}>${n.nombre}</option>`).join('')}
+                            ${LOCAL_DB.notarias.map(n => `<option value="${n.id}" ${state.filtroNotariaReporte === n.id ? 'selected':''}>${n.nombre}</option>`).join('')}
                         </select>
                     </div>
                 `;
@@ -883,15 +922,13 @@
                     </div>
 
                     <div id="reporte-container" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <!-- Se llena vía JS -->
                     </div>
                 </div>
             `;
         }
 
-        // Función de ayuda para obtener los actos según los filtros activos
         function getActosFiltradosReporte() {
-            let actosFiltrados = MOCK_DB.actos;
+            let actosFiltrados = LOCAL_DB.actos;
             if (state.currentUser.role === 2) {
                 actosFiltrados = actosFiltrados.filter(a => a.notariaId === state.currentUser.notariaId);
             } else if (state.currentUser.role === 1 && state.filtroNotariaReporte) {
@@ -971,14 +1008,13 @@
         }
 
         function cambiarFiltroReportes(val) {
-            state.filtroNotariaReporte = val ? parseInt(val) : null;
+            state.filtroNotariaReporte = val || null;
             renderReportesTables();
         }
 
         let currentReportTab = 'protocolos';
         function switchReportTab(tab) {
             currentReportTab = tab;
-            // Estilos Tabs
             ['protocolos', 'vehiculos', 'contratos'].forEach(t => {
                 const el = document.getElementById(`tab-${t}`);
                 if(t === tab) {
@@ -1068,7 +1104,7 @@
         }
 
 
-        // --- MÓDULO DE USUARIOS (CRUD REAL) ---
+        // --- MÓDULO DE USUARIOS (CRUD CON FIREBASE) ---
         function getUsuariosHTML() {
             if (state.currentUser.role === 3) return `<p class="text-red-500">Acceso denegado.</p>`;
             return `
@@ -1076,7 +1112,7 @@
                     <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                         <div>
                             <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-users-cog text-purple-600 mr-2"></i> Gestión de Usuarios</h2>
-                            <p class="text-sm text-gray-500">Administración de credenciales y roles del sistema.</p>
+                            <p class="text-sm text-gray-500">Administración de credenciales y roles del sistema en la Nube.</p>
                         </div>
                         <button onclick="openNuevoUsuarioModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors">
                             <i class="fas fa-user-plus"></i> Nuevo Usuario
@@ -1104,9 +1140,8 @@
         }
 
         function generarTablaUsuarios() {
-            let usuariosMostrar = MOCK_DB.users;
+            let usuariosMostrar = LOCAL_DB.users;
             
-            // Rol 2 solo ve usuarios de su notaría y que sean rol 3
             if (state.currentUser.role === 2) {
                 usuariosMostrar = usuariosMostrar.filter(u => u.notariaId === state.currentUser.notariaId && u.role === 3);
             }
@@ -1114,13 +1149,12 @@
             return usuariosMostrar.map(u => {
                 const roleLabels = {1: 'SuperAdmin', 2: 'Oficial (Admin Notaría)', 3: 'Matrizador'};
                 const roleColors = {1: 'bg-red-100 text-red-800', 2: 'bg-blue-100 text-blue-800', 3: 'bg-gray-100 text-gray-800'};
-                const notariaStr = u.notariaId ? MOCK_DB.notarias.find(n => n.id === u.notariaId)?.nombre : '<span class="text-xs text-gray-400 italic">Acceso Global</span>';
+                const notariaStr = u.notariaId ? LOCAL_DB.notarias.find(n => n.id === u.notariaId)?.nombre : '<span class="text-xs text-gray-400 italic">Acceso Global</span>';
                 
-                // Un admin global no debería poder eliminarse a sí mismo en esta UI simple
                 const deleteBtn = u.id !== state.currentUser.id 
-                    ? `<button onclick="eliminarUsuario(${u.id})" class="text-red-500 hover:text-red-700 transition-colors p-1" title="Eliminar Usuario"><i class="fas fa-trash-alt"></i></button>` 
+                    ? `<button onclick="eliminarUsuario('${u.id}')" class="text-red-500 hover:text-red-700 transition-colors p-1" title="Eliminar Usuario"><i class="fas fa-trash-alt"></i></button>` 
                     : '';
-                const editBtn = `<button onclick="openEditUsuarioModal(${u.id})" class="text-amber-500 hover:text-amber-700 transition-colors p-1 mr-2" title="Editar Usuario / Contraseña"><i class="fas fa-edit"></i></button>`;
+                const editBtn = `<button onclick="openEditUsuarioModal('${u.id}')" class="text-amber-500 hover:text-amber-700 transition-colors p-1 mr-2" title="Editar Usuario / Contraseña"><i class="fas fa-edit"></i></button>`;
 
                 return `
                     <tr class="hover:bg-gray-50">
@@ -1142,26 +1176,20 @@
         }
 
         function openNuevoUsuarioModal() {
-            // Opciones de Rol según usuario actual
             let roleOptions = '';
             if (state.currentUser.role === 1) {
-                roleOptions = `
-                    <option value="1">Super Administrador</option>
-                    <option value="2">Oficial de Cumplimiento</option>
-                    <option value="3">Matrizador</option>
-                `;
+                roleOptions = `<option value="1">Super Administrador</option><option value="2">Oficial de Cumplimiento</option><option value="3">Matrizador</option>`;
             } else if (state.currentUser.role === 2) {
                 roleOptions = `<option value="3">Matrizador</option>`;
             }
 
-            // Opciones de Notaría
             let notariaOptions = '';
             if (state.currentUser.role === 1) {
                 notariaOptions = `<option value="">-- Ninguna (Acceso Global) --</option>`;
-                notariaOptions += MOCK_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('');
+                notariaOptions += LOCAL_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('');
                 notariaOptions += `<option value="NUEVA">-- Crear Nueva Notaría --</option>`;
             } else {
-                const miNotaria = MOCK_DB.notarias.find(n => n.id === state.currentUser.notariaId);
+                const miNotaria = LOCAL_DB.notarias.find(n => n.id === state.currentUser.notariaId);
                 notariaOptions = `<option value="${miNotaria.id}">${miNotaria.nombre}</option>`;
             }
 
@@ -1202,7 +1230,6 @@
                             <label class="block text-sm font-medium text-blue-800 mb-1">Nombre de la Nueva Notaría (Tenant)</label>
                             <input type="text" id="usr_nueva_notaria_nombre" class="block w-full border border-blue-200 rounded px-3 py-2 sm:text-sm">
                         </div>
-
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
                             <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
                             <button type="submit" class="px-4 py-2 bg-purple-600 rounded-lg text-white hover:bg-purple-700 transition-colors font-medium">Crear Usuario</button>
@@ -1211,7 +1238,7 @@
                 </div>
             `;
             showModal(html);
-            // Ejecutar chequeos iniciales
+            
             window.toggleNotariaFields = function() {
                 const rolSelect = document.getElementById('usr_rol');
                 const notariaSelect = document.getElementById('usr_notaria');
@@ -1239,60 +1266,50 @@
             window.toggleNotariaFields();
         }
 
-        function guardarNuevoUsuario(e) {
+        async function guardarNuevoUsuario(e) {
             e.preventDefault();
+            Swal.fire({ title: 'Creando cuenta en la nube...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+
             const nombre = document.getElementById('usr_nombre').value;
             const username = document.getElementById('usr_username').value;
             const password = document.getElementById('usr_password').value;
             const rol = parseInt(document.getElementById('usr_rol').value);
             let notariaId = document.getElementById('usr_notaria').value;
 
-            // Verificar si el username ya existe
-            if(MOCK_DB.users.some(u => u.username === username)) {
+            if(LOCAL_DB.users.some(u => u.username === username)) {
                 Swal.fire('Error', 'El nombre de usuario ya está en uso.', 'error');
                 return;
             }
 
-            // Lógica para SuperAdmin que no necesita notaría
-            if (rol === 1) {
-                notariaId = null;
-            } else {
-                // Lógica de nueva notaría
-                if (notariaId === 'NUEVA') {
-                    const nuevaNotariaNombre = document.getElementById('usr_nueva_notaria_nombre').value;
-                    const newId = Date.now(); // ID único simulado
-                    MOCK_DB.notarias.push({ id: newId, nombre: nuevaNotariaNombre });
-                    notariaId = newId;
+            try {
+                if (rol === 1) {
+                    notariaId = null;
                 } else {
-                    notariaId = parseInt(notariaId);
+                    if (notariaId === 'NUEVA') {
+                        const nuevaNotariaNombre = document.getElementById('usr_nueva_notaria_nombre').value;
+                        const notariaRef = await db.collection('notarias').add({ nombre: nuevaNotariaNombre });
+                        notariaId = notariaRef.id;
+                        LOCAL_DB.notarias.push({ id: notariaId, nombre: nuevaNotariaNombre });
+                    }
                 }
-            }
 
-            MOCK_DB.users.push({
-                id: Date.now(),
-                nombre: nombre,
-                username: username,
-                password: password,
-                role: rol,
-                notariaId: notariaId
-            });
+                const nuevoUsuario = { nombre: nombre, username: username, password: password, role: rol, notariaId: notariaId };
+                const docRef = await db.collection('users').add(nuevoUsuario);
+                nuevoUsuario.id = docRef.id;
+                
+                LOCAL_DB.users.push(nuevoUsuario);
 
-            closeModal();
-            Swal.fire({ 
-                icon: 'success', 
-                title: '¡Usuario Creado!', 
-                text: 'El usuario ha sido registrado en el sistema exitosamente.', 
-                showConfirmButton: true,
-                confirmButtonColor: '#9333ea' // Purple
-            });
-            
-            if (state.currentView === 'usuarios') {
-                renderCurrentView(); // Recargar tabla
+                closeModal();
+                Swal.fire({ icon: 'success', title: '¡Usuario Creado!', text: 'El usuario ha sido registrado en la base de datos exitosamente.', confirmButtonColor: '#9333ea' });
+                if (state.currentView === 'usuarios') renderCurrentView();
+
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo crear el usuario en la nube.', 'error');
             }
         }
 
         function openEditUsuarioModal(userId) {
-            const userToEdit = MOCK_DB.users.find(u => u.id === userId);
+            const userToEdit = LOCAL_DB.users.find(u => u.id === userId);
             if (!userToEdit) return;
 
             const html = `
@@ -1301,7 +1318,7 @@
                         <h3 class="text-lg font-bold text-gray-800">Editar Usuario / Contraseña</h3>
                         <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                     </div>
-                    <form onsubmit="guardarEdicionUsuario(event, ${userId})" class="p-6 space-y-4">
+                    <form onsubmit="guardarEdicionUsuario(event, '${userId}')" class="p-6 space-y-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
                             <input type="text" id="edit_usr_nombre" value="${userToEdit.nombre}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
@@ -1313,13 +1330,12 @@
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
-                                <input type="password" id="edit_usr_password" placeholder="Opcional (Dejar en blanco para no cambiar)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm placeholder:text-xs">
+                                <input type="password" id="edit_usr_password" placeholder="Dejar en blanco para no cambiar" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm placeholder:text-xs">
                             </div>
                         </div>
-
                         <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
                             <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-amber-500 rounded-lg text-white hover:bg-amber-600 transition-colors font-medium">Actualizar Usuario</button>
+                            <button type="submit" class="px-4 py-2 bg-amber-500 rounded-lg text-white hover:bg-amber-600 transition-colors font-medium">Actualizar en la Nube</button>
                         </div>
                     </form>
                 </div>
@@ -1327,57 +1343,58 @@
             showModal(html);
         }
 
-        function guardarEdicionUsuario(e, userId) {
+        async function guardarEdicionUsuario(e, userId) {
             e.preventDefault();
-            const userIndex = MOCK_DB.users.findIndex(u => u.id === userId);
+            const userIndex = LOCAL_DB.users.findIndex(u => u.id === userId);
             if (userIndex === -1) return;
 
             const newNombre = document.getElementById('edit_usr_nombre').value;
             const newUsername = document.getElementById('edit_usr_username').value;
             const newPassword = document.getElementById('edit_usr_password').value;
 
-            // Verificar si el nuevo username ya existe en OTRO usuario
-            if(MOCK_DB.users.some(u => u.username === newUsername && u.id !== userId)) {
+            if(LOCAL_DB.users.some(u => u.username === newUsername && u.id !== userId)) {
                 Swal.fire('Error', 'El nombre de usuario ya está en uso por otra persona.', 'error');
                 return;
             }
 
-            // Actualizar datos
-            MOCK_DB.users[userIndex].nombre = newNombre;
-            MOCK_DB.users[userIndex].username = newUsername;
-            
-            // Solo actualizar la contraseña si se escribió una nueva
-            if (newPassword.trim() !== '') {
-                MOCK_DB.users[userIndex].password = newPassword;
-            }
+            Swal.fire({ title: 'Actualizando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
 
-            closeModal();
-            Swal.fire({ 
-                icon: 'success', 
-                title: 'Usuario Actualizado', 
-                text: 'Los datos y/o la contraseña se guardaron correctamente.', 
-                timer: 2000, 
-                showConfirmButton: false 
-            });
-            
-            if (state.currentView === 'usuarios') renderCurrentView();
+            const updateData = { nombre: newNombre, username: newUsername };
+            if (newPassword.trim() !== '') { updateData.password = newPassword; }
+
+            try {
+                await db.collection('users').doc(userId).update(updateData);
+                LOCAL_DB.users[userIndex] = { ...LOCAL_DB.users[userIndex], ...updateData };
+                
+                closeModal();
+                Swal.fire({ icon: 'success', title: 'Usuario Actualizado', text: 'Los datos se guardaron en la nube correctamente.', timer: 2000, showConfirmButton: false });
+                if (state.currentView === 'usuarios') renderCurrentView();
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo actualizar el registro en la nube.', 'error');
+            }
         }
 
         function eliminarUsuario(userId) {
             Swal.fire({
                 title: '¿Eliminar Usuario?',
-                text: "El usuario perderá el acceso al sistema permanentemente.",
+                text: "El usuario perderá el acceso permanentemente.",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
                 cancelButtonColor: '#3085d6',
                 confirmButtonText: 'Sí, eliminar',
                 cancelButtonText: 'Cancelar'
-            }).then((result) => {
+            }).then(async (result) => {
                 if (result.isConfirmed) {
-                    MOCK_DB.users = MOCK_DB.users.filter(u => u.id !== userId);
-                    if (state.currentView === 'usuarios') renderCurrentView();
-                    Swal.fire('Eliminado', 'El usuario fue eliminado correctamente.', 'success');
+                    Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+                    try {
+                        await db.collection('users').doc(userId).delete();
+                        LOCAL_DB.users = LOCAL_DB.users.filter(u => u.id !== userId);
+                        if (state.currentView === 'usuarios') renderCurrentView();
+                        Swal.fire('Eliminado', 'El usuario fue eliminado de la base de datos.', 'success');
+                    } catch (error) {
+                        Swal.fire('Error', 'No se pudo eliminar el usuario de la nube.', 'error');
+                    }
                 }
             });
         }
@@ -1400,7 +1417,6 @@
         }
 
         // --- NAVEGACIÓN Y UTILIDADES ---
-
         function navigate(view) {
             state.currentView = view;
             renderCurrentView();
@@ -1426,7 +1442,7 @@
             const user = document.getElementById('login-username').value;
             const pass = document.getElementById('login-password').value;
             
-            const foundUser = MOCK_DB.users.find(u => u.username === user && u.password === pass);
+            const foundUser = LOCAL_DB.users.find(u => u.username === user && u.password === pass);
             
             if (foundUser) {
                 state.currentUser = foundUser;
@@ -1443,7 +1459,6 @@
             renderApp();
         }
 
-        // Sistema de Modales Custom
         function showModal(contentHTML) {
             const container = document.getElementById('modal-container');
             container.innerHTML = `
@@ -1463,8 +1478,14 @@
             container.innerHTML = '';
         }
 
-        // Inicializar App
-        window.onload = () => {
+        // --- INICIALIZACIÓN ---
+        window.onload = async () => {
+            // Mostrar pantalla de carga inicial al abrir la página web
+            Swal.fire({ title: 'Conectando con la Nube...', text: 'Descargando información segura', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            
+            await loadDataFromFirebase();
+            
+            Swal.close();
             renderApp();
         };
 
