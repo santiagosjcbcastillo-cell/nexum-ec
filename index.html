@@ -477,6 +477,24 @@
             `}).join('');
         }
 
+                            <td class="p-4 text-sm text-gray-500 whitespace-nowrap"><i class="far fa-calendar-alt mr-1"></i> ${acto.fecha}</td>
+                    <td class="p-4 whitespace-nowrap">
+                        <div class="flex items-center justify-end gap-2">
+                            <button onclick="openEditActoModal('${acto.id}')" class="w-8 h-8 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors" title="Editar Detalles e Intervinientes">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="descargarFormulario('${acto.id}')" class="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-600 hover:text-white flex items-center justify-center transition-colors" title="Descargar Formulario">
+                                <i class="fas fa-file-download"></i>
+                            </button>
+                            <button onclick="eliminarActo('${acto.id}')" class="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-600 hover:text-white flex items-center justify-center transition-colors" title="Eliminar Acto">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `}).join('');
+        }
+
         // --- LÓGICA DE MODALES Y FIREBASE DE ACTOS ---
         function openNuevoActoModal() {
             const html = `
