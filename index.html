@@ -573,50 +573,190 @@
             const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
 
+            const roleName = state.currentUser.role === 1 ? 'SuperAdmin' : (state.currentUser.role === 2 ? 'Oficial' : 'Matrizador');
+            
+            // Cargar intervinientes en memoria temporal para edición
+            window._tempEditIntervinientes = JSON.parse(JSON.stringify(acto.intervinientes || []));
+
             const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800">Completar Datos del Acto</h3>
-                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                <div class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden transform transition-all fade-in max-h-[95vh] flex flex-col">
+                    <!-- Topbar modal -->
+                    <div class="px-6 py-4 border-b border-gray-200 bg-white flex justify-between items-center sticky top-0 z-20">
+                        <div class="flex items-center gap-3">
+                            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-700 transition-colors"><i class="fas fa-arrow-left text-lg"></i></button>
+                            <h3 class="text-2xl font-black text-gray-900 tracking-tight">Editar Acto Notarial</h3>
+                        </div>
+                        <div class="text-sm text-gray-500 hidden sm:block">
+                            Sesión: <span class="font-bold text-gray-800">${state.currentUser.nombre}</span> | <span class="bg-gray-100 px-2 py-1 rounded-md text-xs border border-gray-200">${roleName}</span>
+                        </div>
                     </div>
-                    <form onsubmit="guardarEdicionActo(event, '${actoId}')" class="p-6 space-y-6">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Trámite</label>
-                                <input type="text" id="edit_numero" value="${acto.numero || ''}" placeholder="Opcional" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+
+                    <div class="flex-1 overflow-y-auto p-4 sm:p-8">
+                        <form id="edit-acto-form" onsubmit="guardarEdicionActo(event, '${actoId}')" class="space-y-8 max-w-4xl mx-auto">
+                            
+                            <!-- Detalles del Acto -->
+                            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                <div class="bg-[#111827] text-white px-6 py-4">
+                                    <h4 class="text-lg font-bold flex items-center gap-2"><i class="far fa-file-alt"></i> Detalles del Acto Notarial</h4>
+                                    <p class="text-sm text-gray-400 mt-1">Ingrese el protocolo, tipo de acto, fecha y valor del trámite.</p>
+                                </div>
+                                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Número de Protocolo</label>
+                                        <input type="text" id="edit_numero" value="${acto.numero || ''}" class="block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Fecha del Acto</label>
+                                        <input type="date" id="edit_fecha" value="${acto.fecha}" required class="block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Tipo de Acto</label>
+                                        <input type="text" value="${acto.categoria}" disabled class="block w-full border border-gray-200 bg-gray-50 rounded-lg px-4 py-2.5 text-sm text-gray-600 font-medium">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Cuantía (USD)</label>
+                                        <div class="relative">
+                                            <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-500 font-medium">$</span>
+                                            <input type="number" step="0.01" id="edit_cuantia" value="${acto.cuantia}" class="block w-full border border-gray-300 rounded-lg pl-9 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Forma de Pago</label>
+                                        <select id="edit_forma_pago" class="block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                            <option value="">Seleccione...</option>
+                                            <option value="Efectivo" ${acto.forma_pago==='Efectivo'?'selected':''}>Efectivo</option>
+                                            <option value="Transferencia" ${acto.forma_pago==='Transferencia'?'selected':''}>Transferencia</option>
+                                            <option value="Cheque" ${acto.forma_pago==='Cheque'?'selected':''}>Cheque</option>
+                                            <option value="Indeterminada" ${acto.forma_pago==='Indeterminada'?'selected':''}>Indeterminada</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
+
+                            <!-- Intervinientes -->
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-                                <input type="date" id="edit_fecha" value="${acto.fecha}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-5 gap-3">
+                                    <h4 class="text-xl font-bold text-gray-900 flex items-center gap-2"><i class="fas fa-user-friends"></i> Intervinientes</h4>
+                                    <button type="button" onclick="agregarIntervinienteCard()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
+                                        <i class="fas fa-plus text-gray-500"></i> Agregar compareciente
+                                    </button>
+                                </div>
+                                <div id="edit_intervinientes_list" class="space-y-4">
+                                    <!-- Cards will be generated here -->
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Cuantía ($)</label>
-                                <input type="text" id="edit_cuantia" value="${acto.cuantia}" placeholder="Ej: 50000.00" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Forma de Pago</label>
-                                <select id="edit_forma_pago" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
-                                    <option value="">Seleccione...</option>
-                                    <option value="Efectivo" ${acto.forma_pago==='Efectivo'?'selected':''}>Efectivo</option>
-                                    <option value="Transferencia" ${acto.forma_pago==='Transferencia'?'selected':''}>Transferencia</option>
-                                    <option value="Cheque" ${acto.forma_pago==='Cheque'?'selected':''}>Cheque</option>
-                                    <option value="Indeterminada" ${acto.forma_pago==='Indeterminada'?'selected':''}>Indeterminada</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-amber-500 rounded-lg text-white hover:bg-amber-600 transition-colors font-medium">Actualizar Datos</button>
-                        </div>
-                    </form>
+                        </form>
+                    </div>
+                    
+                    <div class="px-6 py-4 border-t border-gray-200 bg-white flex justify-end gap-3 sticky bottom-0 z-20">
+                        <button type="button" onclick="closeModal()" class="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-semibold shadow-sm">Cancelar</button>
+                        <button type="submit" form="edit-acto-form" class="px-6 py-2.5 dyn-bg-primary rounded-lg text-white hover:opacity-90 transition-colors font-semibold shadow-sm flex items-center gap-2">
+                            <i class="fas fa-save"></i> Guardar Cambios
+                        </button>
+                    </div>
                 </div>
             `;
             showModal(html);
+            window.renderIntervinientesCards();
         }
+
+        window.syncIntervinientesForm = function() {
+            const container = document.getElementById('edit_intervinientes_list');
+            if(!container) return;
+            const cards = container.querySelectorAll('.interviniente-card');
+            window._tempEditIntervinientes = Array.from(cards).map(card => ({
+                tipo: card.querySelector('.int-tipo').value,
+                identificacion: card.querySelector('.int-id').value,
+                nombre: card.querySelector('.int-nombre').value,
+                nacionalidad: card.querySelector('.int-nacionalidad').value
+            }));
+        };
+
+        window.renderIntervinientesCards = function() {
+            const container = document.getElementById('edit_intervinientes_list');
+            if (!container) return;
+            
+            if (window._tempEditIntervinientes.length === 0) {
+                container.innerHTML = `<div class="py-10 text-center text-gray-500 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50">No hay intervinientes registrados.<br><span class="text-sm mt-1 block">Haga clic en "Agregar compareciente" para iniciar.</span></div>`;
+                return;
+            }
+
+            container.innerHTML = window._tempEditIntervinientes.map((int, idx) => `
+                <div class="interviniente-card bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden transition-all">
+                    <div class="bg-gray-50/80 px-5 py-3.5 border-b border-gray-200 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-gray-900">Interviniente #${idx + 1}</span>
+                            <span class="text-[11px] font-medium text-gray-500 bg-gray-200/80 px-2.5 py-1 rounded-md flex items-center gap-1.5"><i class="fas fa-lock text-gray-400"></i> Guardado (Trazabilidad UAFE)</span>
+                        </div>
+                        <button type="button" onclick="removerIntervinienteCard(${idx})" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 shadow-sm">
+                            <i class="far fa-trash-alt"></i> Dar de baja
+                        </button>
+                    </div>
+                    <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Rol / Tipo</label>
+                            <select class="int-tipo block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                <option value="Otorgante" ${int.tipo === 'Otorgante' ? 'selected' : ''}>Otorgante</option>
+                                <option value="Beneficiario" ${int.tipo === 'Beneficiario' ? 'selected' : ''}>Beneficiario</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Identificación (Cédula/RUC)</label>
+                            <input type="text" class="int-id block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" value="${int.identificacion || ''}" required>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Nombre Completo</label>
+                            <input type="text" class="int-nombre block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" value="${int.nombre || ''}" required>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Nacionalidad</label>
+                            <input type="text" class="int-nacionalidad block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" value="${int.nacionalidad || 'Ecuatoriana'}" required>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        };
+
+        window.agregarIntervinienteCard = function() {
+            window.syncIntervinientesForm(); // Guardamos lo que se haya tipeado
+            window._tempEditIntervinientes.push({ tipo: 'Otorgante', identificacion: '', nombre: '', nacionalidad: 'Ecuatoriana' });
+            window.renderIntervinientesCards();
+        };
+
+        window.removerIntervinienteCard = function(idx) {
+            Swal.fire({
+                title: '¿Dar de baja?',
+                text: "Se eliminará este interviniente del formulario.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sí, dar de baja',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.syncIntervinientesForm(); // Guardamos el estado actual
+                    window._tempEditIntervinientes.splice(idx, 1);
+                    window.renderIntervinientesCards();
+                }
+            });
+        };
 
         async function guardarEdicionActo(e, actoId) {
             e.preventDefault();
-            Swal.fire({ title: 'Actualizando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            window.syncIntervinientesForm(); // Asegurarnos de tener los datos de las tarjetas actualizados
+
+            // Validar que los intervinientes no tengan campos en blanco
+            let isValid = true;
+            for(let int of window._tempEditIntervinientes) {
+                if(!int.identificacion || !int.nombre || !int.nacionalidad) isValid = false;
+            }
+            if(!isValid) {
+                Swal.fire('Campos Incompletos', 'Por favor, complete todos los campos obligatorios de los intervinientes antes de guardar.', 'warning');
+                return;
+            }
+
+            Swal.fire({ title: 'Guardando Cambios...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
 
             const actoIndex = LOCAL_DB.actos.findIndex(a => a.id === actoId);
             if(actoIndex === -1) return;
@@ -625,20 +765,21 @@
                 numero: document.getElementById('edit_numero').value,
                 fecha: document.getElementById('edit_fecha').value,
                 cuantia: document.getElementById('edit_cuantia').value,
-                forma_pago: document.getElementById('edit_forma_pago').value
+                forma_pago: document.getElementById('edit_forma_pago').value,
+                intervinientes: window._tempEditIntervinientes
             };
 
             try {
                 await db.collection('actos').doc(actoId).update(updateData);
                 
-                // Update Local
+                // Actualizar DB local
                 LOCAL_DB.actos[actoIndex] = { ...LOCAL_DB.actos[actoIndex], ...updateData };
                 
                 closeModal();
-                Swal.fire({ icon: 'success', title: 'Actualizado', text: 'Datos guardados en la nube.', timer: 1500, showConfirmButton: false });
+                Swal.fire({ icon: 'success', title: 'Actualizado', text: 'El acto y sus intervinientes fueron guardados.', timer: 2000, showConfirmButton: false });
                 if (state.currentView === 'actos') renderActosTable();
             } catch (error) {
-                Swal.fire('Error', 'No se pudo actualizar el registro.', 'error');
+                Swal.fire('Error', 'No se pudo actualizar el registro en la nube.', 'error');
             }
         }
 
