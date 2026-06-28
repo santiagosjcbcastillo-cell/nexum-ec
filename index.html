@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión Notarial - SaaS</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome para Iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SweetAlert2 para Alertas Estilizadas -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- SheetJS para Exportación a Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--color-primary)', // Configurable dinámicamente
+                        secondary: '#3b82f6',
+                        accent: '#fbbf24',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Estilos personalizados adicionales */
+        :root {
+            --color-primary: #1e3a8a; /* Azul por defecto */
+        }
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Scrollbar personalizado */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Clases auxiliares dinámicas para Tailwind en caso de que variables no enganchen a tiempo */
+        .dyn-bg-primary { background-color: var(--color-primary) !important; }
+        .dyn-text-primary { color: var(--color-primary) !important; }
+        .dyn-border-primary { border-color: var(--color-primary) !important; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 overflow-hidden">
+
+    <!-- CONTENEDOR PRINCIPAL -->
+    <div id="app" class="h-screen w-full flex flex-col">
+        <!-- Las vistas se inyectarán aquí mediante JavaScript -->
+    </div>
+
+    <!-- CONTENEDOR DE MODALES -->
+    <div id="modal-container" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <!-- El contenido del modal se inyectará aquí -->
+    </div>
+
+    <!-- LÓGICA DE LA APLICACIÓN -->
+    <script>
+        // --- CONFIGURACIÓN DINÁMICA DE LA INTERFAZ ---
+        let sysConfig = JSON.parse(localStorage.getItem('notarySysConfig')) || {
+            tituloApp: 'NotarySaaS',
+            colorPrincipal: '#1e3a8a'
+        };
+
+        function aplicarConfiguracion() {
+            document.documentElement.style.setProperty('--color-primary', sysConfig.colorPrincipal);
+            document.title = sysConfig.tituloApp + ' - Gestión Notarial';
+            
+            const titleElements = document.querySelectorAll('.app-title-text');
+            titleElements.forEach(el => el.innerText = sysConfig.tituloApp);
+        }
+        aplicarConfiguracion(); // Aplicar al cargar
+
+        // --- 1. BASE DE DATOS EN MEMORIA (Estado de la App) ---
+        const MOCK_DB = {
+            notarias: [
+                { id: 1, nombre: "Notaría 11" },
+                { id: 2, nombre: "Notaría Primera" }
+            ],
+            users: [
+                { id: 1, username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' },
+                { id: 2, username: 'oficial11', password: '123', role: 2, notariaId: 1, nombre: 'Oficial Notaría 11' },
+                { id: 3, username: 'matrizador11', password: '123', role: 3, notariaId: 1, nombre: 'Juan Pérez (Matrizador)' },
+                { id: 4, username: 'oficial1', password: '123', role: 2, notariaId: 2, nombre: 'Oficial Notaría 1' }
+            ],
+            actos: [] // Almacenará los actos creados
+        };
+
+        const CATEGORIAS = {
+            'Protocolo': [
+                "Promesas de celebrar contratos", "Compraventa", "Compraventa de inmuebles (MIDUVI)", 
+                "Transferencia de dominio con constitución de hipoteca", "Constitución de hipoteca", 
+                "Constitución de hipoteca (BIESS/BEV/Municipalidades/Mutualistas/Cooperativas)", 
+                "Constitución de hipoteca abierta", "Constitución de hipoteca (MIDUVI)", "Donación", 
+                "Permuta", "Liquidación de la sociedad conyugal", "Liquidación de la sociedad de bienes", 
+                "Dación en pago", "Cesión de derechos onerosos", "Comodato", 
+                "Constitución de consorcios con cuantía determinada", "Traspaso de un crédito con cuantía", 
+                "Cesión de participaciones"
+            ],
+            'Diligencia': [
+                "Reconocimiento de firmas de vehículo", "Reconocimiento de firmas de contrato"
+            ]
+        };
+
+        // Estado actual
+        let state = {
+            currentUser: null,
+            currentView: 'login', // login, dashboard, usuarios, actos, reportes, riesgos
+            filtroNotariaReporte: null // Para el rol 1 en reportes
+        };
+
+        // --- 2. FUNCIONES PRINCIPALES DE RENDERIZADO ---
+
+        function renderApp() {
+            const app = document.getElementById('app');
+            if (!state.currentUser) {
+                app.innerHTML = getLoginHTML();
+            } else {
+                app.innerHTML = getLayoutHTML();
+                renderCurrentView();
+            }
+            aplicarConfiguracion(); // Reaplicar textos si la vista cambió
+        }
+
+        function renderCurrentView() {
+            const content = document.getElementById('main-content');
+            if (!content) return;
+
+            switch(state.currentView) {
+                case 'dashboard': content.innerHTML = getDashboardHTML(); break;
+                case 'usuarios': content.innerHTML = getUsuariosHTML(); break;
+                case 'actos': content.innerHTML = getActosHTML(); renderActosTable(); break;
+                case 'reportes': content.innerHTML = getReportesHTML(); renderReportesTables(); break;
+                case 'riesgos': content.innerHTML = getRiesgosHTML(); break;
+                default: content.innerHTML = getDashboardHTML();
+            }
+            updateSidebarActive();
+            aplicarConfiguracion();
+        }
+
+        // --- 3. COMPONENTES HTML (Plantillas) ---
+
+        function getLoginHTML() {
+            return `
+                <div class="flex items-center justify-center h-full w-full bg-gradient-to-br dyn-bg-primary to-blue-800" style="background-color: var(--color-primary);">
+                    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md fade-in glass-effect">
+                        <div class="text-center mb-8">
+                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full dyn-bg-primary text-white mb-4 shadow-lg">
+                                <i class="fas fa-balance-scale text-3xl"></i>
+                            </div>
+                            <h1 class="text-2xl font-bold text-gray-800 app-title-text">${sysConfig.tituloApp}</h1>
+                            <p class="text-gray-500 text-sm mt-2">Ingrese sus credenciales para acceder</p>
+                        </div>
+                        <form onsubmit="handleLogin(event)" class="space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <i class="fas fa-user text-gray-400"></i>
+                                    </div>
+                                    <input type="text" id="login-username" required
+                                        class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary sm:text-sm transition-colors"
+                                        placeholder="Ej: sjcastillob">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <i class="fas fa-lock text-gray-400"></i>
+                                    </div>
+                                    <input type="password" id="login-password" required
+                                        class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary sm:text-sm transition-colors"
+                                        placeholder="••••••••">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white dyn-bg-primary hover:opacity-90 focus:outline-none transition-colors">
+                                Ingresar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getLayoutHTML() {
+            const roleName = state.currentUser.role === 1 ? 'SuperAdmin' : (state.currentUser.role === 2 ? 'Oficial de Cumplimiento' : 'Matrizador');
+            const notariaName = state.currentUser.notariaId ? MOCK_DB.notarias.find(n => n.id === state.currentUser.notariaId).nombre : 'Global';
+
+            return `
+                <!-- Topbar -->
+                <header class="bg-white shadow-sm z-10 w-full flex-shrink-0 h-16 flex items-center justify-between px-6">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-balance-scale dyn-text-primary text-2xl"></i>
+                        <span class="font-bold text-lg text-gray-800 tracking-tight app-title-text">${sysConfig.tituloApp}</span>
+                    </div>
+                    <div class="flex items-center gap-6">
+                        ${state.currentUser.role === 1 ? `
+                            <button onclick="openConfiguracionModal()" class="text-gray-500 hover:text-gray-800 font-medium text-sm transition-colors flex items-center gap-1 bg-gray-100 py-1.5 px-3 rounded-lg">
+                                <i class="fas fa-cog"></i> Personalizar Interfaz
+                            </button>
+                        ` : ''}
+
+                        ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? 
+                            `<button onclick="navigate('usuarios')" class="text-gray-600 dyn-text-primary font-medium text-sm transition-colors hover:opacity-80">
+                                <i class="fas fa-users-cog mr-1"></i> Gestión de Usuarios
+                            </button>` : ''
+                        }
+                        <div class="flex items-center gap-3 border-l pl-6 border-gray-200">
+                            <div class="text-right hidden sm:block">
+                                <p class="text-sm font-bold text-gray-800">${state.currentUser.nombre}</p>
+                                <p class="text-xs text-gray-500">${roleName} | ${notariaName}</p>
+                            </div>
+                            <button onclick="handleLogout()" class="w-10 h-10 rounded-full bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Cerrar Sesión">
+                                <i class="fas fa-sign-out-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="flex flex-1 overflow-hidden">
+                    <!-- Sidebar -->
+                    <aside class="w-64 dyn-bg-primary text-white flex-shrink-0 overflow-y-auto hidden md:block">
+                        <nav class="p-4 space-y-1">
+                            <p class="px-3 text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 mt-4">Principal</p>
+                            
+                            <a href="#" onclick="navigate('dashboard')" id="nav-dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                <i class="fas fa-home w-5 text-center"></i> <span>Inicio</span>
+                            </a>
+                            
+                            <a href="#" onclick="navigate('actos')" id="nav-actos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                <i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span>
+                            </a>
+
+                            ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? `
+                                <p class="px-3 text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 mt-6">Administración</p>
+                                <a href="#" onclick="navigate('reportes')" id="nav-reportes" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                    <i class="fas fa-chart-bar w-5 text-center"></i> <span>Generación de Reportes</span>
+                                </a>
+                                <a href="#" onclick="navigate('riesgos')" id="nav-riesgos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                    <i class="fas fa-shield-alt w-5 text-center"></i> <span>Análisis de Riesgos</span>
+                                </a>
+                                <a href="#" onclick="navigate('usuarios')" id="nav-usuarios" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                    <i class="fas fa-users w-5 text-center"></i> <span>Usuarios del Sistema</span>
+                                </a>
+                            ` : ''}
+                        </nav>
+                    </aside>
+
+                    <!-- Main Content -->
+                    <main id="main-content" class="flex-1 overflow-y-auto p-6 bg-gray-50 fade-in">
+                        <!-- Vista dinámica -->
+                    </main>
+                </div>
+            `;
+        }
+
+        // --- MÓDULO DE CONFIGURACIÓN DE INTERFAZ (ROL 1) ---
+        function openConfiguracionModal() {
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all fade-in">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-cog text-gray-500 mr-2"></i> Personalizar Interfaz</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <form onsubmit="guardarConfiguracion(event)" class="p-6 space-y-5">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre del Sistema</label>
+                            <input type="text" id="config_titulo" value="${sysConfig.tituloApp}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Color Principal (Hexadecimal)</label>
+                            <div class="flex items-center gap-3">
+                                <input type="color" id="config_color" value="${sysConfig.colorPrincipal}" required class="h-10 w-14 rounded cursor-pointer border border-gray-300">
+                                <input type="text" id="config_color_text" value="${sysConfig.colorPrincipal}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm uppercase" oninput="document.getElementById('config_color').value = this.value">
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary">Guardar Cambios</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            showModal(html);
+            
+            // Sync color picker with text
+            document.getElementById('config_color').addEventListener('input', function(e) {
+                document.getElementById('config_color_text').value = e.target.value;
+            });
+        }
+
+        function guardarConfiguracion(e) {
+            e.preventDefault();
+            const nuevoTitulo = document.getElementById('config_titulo').value;
+            const nuevoColor = document.getElementById('config_color').value;
+
+            sysConfig = {
+                tituloApp: nuevoTitulo,
+                colorPrincipal: nuevoColor
+            };
+
+            localStorage.setItem('notarySysConfig', JSON.stringify(sysConfig));
+            aplicarConfiguracion();
+            
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'Interfaz Actualizada', text: 'Los cambios se han aplicado y guardado exitosamente.', timer: 1500, showConfirmButton: false });
+            
+            // Re-render layout to catch any direct class changes
+            setTimeout(() => {
+                const navDashboard = state.currentView;
+                renderApp();
+                navigate(navDashboard); // Restaurar vista
+            }, 300);
+        }
+
+        function getDashboardHTML() {
+            return `
+                <div class="h-full flex flex-col items-center justify-center text-center space-y-6">
+                    <div class="w-32 h-32 bg-white rounded-full shadow-lg flex items-center justify-center border-4 border-gray-100">
+                        <i class="fas fa-balance-scale text-6xl dyn-text-primary"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-800">Bienvenido a <span class="app-title-text">${sysConfig.tituloApp}</span></h2>
+                        <p class="text-gray-500 mt-2 max-w-lg mx-auto">Plataforma integral para el control de actos, diligencias, cumplimiento y reportes operativos.</p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-8 w-full max-w-4xl">
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('actos')">
+                            <div class="bg-blue-50 p-3 rounded-full text-blue-600 mb-3"><i class="fas fa-file-alt text-xl"></i></div>
+                            <h3 class="font-semibold text-gray-700">Actos Notariales</h3>
+                            <p class="text-xs text-gray-400 mt-1">Gestionar protocolos y diligencias</p>
+                        </div>
+                        ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? `
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('reportes')">
+                            <div class="bg-green-50 p-3 rounded-full text-green-600 mb-3"><i class="fas fa-chart-line text-xl"></i></div>
+                            <h3 class="font-semibold text-gray-700">Reportes</h3>
+                            <p class="text-xs text-gray-400 mt-1">Exportar a Excel (.xlsx)</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('usuarios')">
+                            <div class="bg-purple-50 p-3 rounded-full text-purple-600 mb-3"><i class="fas fa-users-cog text-xl"></i></div>
+                            <h3 class="font-semibold text-gray-700">Usuarios</h3>
+                            <p class="text-xs text-gray-400 mt-1">Administración de personal</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- MÓDULO DE ACTOS ---
+        function getActosHTML() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-file-signature dyn-text-primary mr-2"></i> Creación y Gestión de Actos</h2>
+                            <p class="text-sm text-gray-500">Administre los protocolos y diligencias de su notaría.</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="relative">
+                                <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                                <input type="text" id="buscador-actos" oninput="renderActosTable()" placeholder="Buscar Número o ID..." class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary text-sm w-64">
+                            </div>
+                            <button onclick="openNuevoActoModal()" class="dyn-bg-primary text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 hover:opacity-90 transition-colors">
+                                <i class="fas fa-plus"></i> Ingresar Nuevo Acto
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-50 text-gray-600 text-sm border-b">
+                                        <th class="p-4 font-semibold w-40">Acciones</th>
+                                        <th class="p-4 font-semibold">ID Sistema</th>
+                                        <th class="p-4 font-semibold">Nº Trámite</th>
+                                        <th class="p-4 font-semibold">Categoría del Acto</th>
+                                        <th class="p-4 font-semibold">Tipo</th>
+                                        <th class="p-4 font-semibold">Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="actos-table-body" class="divide-y divide-gray-100">
+                                    <!-- Los actos se cargarán aquí -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderActosTable() {
+            const tbody = document.getElementById('actos-table-body');
+            const buscadorInput = document.getElementById('buscador-actos');
+            if(!tbody) return;
+
+            // Filtrar actos por notaría si es rol 2 o 3
+            let actosMostrar = MOCK_DB.actos;
+            if (state.currentUser.role !== 1) {
+                actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
+            }
+
+            // Filtrar por término de búsqueda (Secuencial o Número de acto)
+            const termino = buscadorInput ? buscadorInput.value.toLowerCase() : '';
+            if (termino.trim() !== '') {
+                actosMostrar = actosMostrar.filter(a => {
+                    const seqStr = 'Acto-' + String(a.secuencial || 0).padStart(5, '0');
+                    return seqStr.toLowerCase().includes(termino) || String(a.numero || '').toLowerCase().includes(termino);
+                });
+            }
+
+            // Ordenar por fecha (más reciente primero)
+            actosMostrar.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+            if (actosMostrar.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-500">No hay actos registrados que coincidan con la búsqueda.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = actosMostrar.map(acto => {
+                const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
+                const numTramiteHtml = acto.numero ? acto.numero : '<span class="text-gray-400 italic text-xs">Pendiente</span>';
+                
+                return `
+                <tr class="hover:bg-blue-50/50 transition-colors group">
+                    <td class="p-4 whitespace-nowrap">
+                        <div class="flex items-center gap-2">
+                            <button onclick="openIntervinientesModal(${acto.id})" class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-colors" title="Gestionar Intervinientes">
+                                <i class="fas fa-users"></i>
+                            </button>
+                            <button onclick="openEditActoModal(${acto.id})" class="w-8 h-8 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors" title="Editar Detalles (Cuantía, Pago)">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="descargarFormulario(${acto.id})" class="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-600 hover:text-white flex items-center justify-center transition-colors" title="Descargar Formulario">
+                                <i class="fas fa-file-download"></i>
+                            </button>
+                            <button onclick="eliminarActo(${acto.id})" class="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-600 hover:text-white flex items-center justify-center transition-colors" title="Eliminar Acto">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </td>
+                    <td class="p-4 font-bold text-gray-800">${seqStr}</td>
+                    <td class="p-4 text-sm font-medium text-gray-700">${numTramiteHtml}</td>
+                    <td class="p-4 text-sm text-gray-600">${acto.categoria}</td>
+                    <td class="p-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${acto.tipo === 'Protocolo' ? 'bg-indigo-100 text-indigo-800' : 'bg-teal-100 text-teal-800'}">
+                            ${acto.tipo}
+                        </span>
+                    </td>
+                    <td class="p-4 text-sm text-gray-500 whitespace-nowrap"><i class="far fa-calendar-alt mr-1"></i> ${acto.fecha}</td>
+                </tr>
+            `}).join('');
+        }
+
+        // --- LÓGICA DE MODALES DE ACTOS (Funciones mantenidas de la versión anterior) ---
+        function openNuevoActoModal() {
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all fade-in">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800">Ingresar Nuevo Acto</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <form onsubmit="guardarNuevoActo(event)" class="p-6 space-y-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-3">Tipo de Trámite</label>
+                            <div class="flex gap-6">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="tipo_tramite" value="Protocolo" class="w-4 h-4 text-blue-600 border-gray-300" onchange="updateCategorias('Protocolo')" required>
+                                    <span class="text-gray-700">Protocolo</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="tipo_tramite" value="Diligencia" class="w-4 h-4 text-blue-600 border-gray-300" onchange="updateCategorias('Diligencia')">
+                                    <span class="text-gray-700">Diligencia</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Trámite</label>
+                                <input type="text" id="acto_numero" placeholder="Opcional (se puede llenar luego)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                                <input type="date" id="acto_fecha" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Categoría del Acto</label>
+                            <select id="acto_categoria" required disabled class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm bg-gray-50">
+                                <option value="">Seleccione primero el Tipo de Trámite...</option>
+                            </select>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 dyn-bg-primary border border-transparent rounded-lg text-white hover:opacity-90 transition-colors font-medium">Guardar Acto</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            showModal(html);
+        }
+
+        function updateCategorias(tipo) {
+            const select = document.getElementById('acto_categoria');
+            select.disabled = false;
+            select.classList.remove('bg-gray-50');
+            const opciones = CATEGORIAS[tipo];
+            select.innerHTML = '<option value="">Seleccione una categoría...</option>' + 
+                opciones.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+        }
+
+        function guardarNuevoActo(e) {
+            e.preventDefault();
+            const tipo = document.querySelector('input[name="tipo_tramite"]:checked').value;
+            const numero = document.getElementById('acto_numero').value;
+            const fecha = document.getElementById('acto_fecha').value;
+            const categoria = document.getElementById('acto_categoria').value;
+            const notariaId = state.currentUser.role === 1 ? (state.currentUser.notariaId || 1) : state.currentUser.notariaId;
+
+            // Calcular el número secuencial para esta notaría
+            const actosNotaria = MOCK_DB.actos.filter(a => a.notariaId === notariaId);
+            const maxSecuencial = actosNotaria.reduce((max, a) => Math.max(max, a.secuencial || 0), 0);
+            const nuevoSecuencial = maxSecuencial + 1;
+
+            MOCK_DB.actos.push({
+                id: Date.now(), notariaId: notariaId, secuencial: nuevoSecuencial, tipo: tipo, numero: numero, categoria: categoria, fecha: fecha,
+                cuantia: '', forma_pago: '', intervinientes: []
+            });
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'Guardado', text: 'El acto ha sido registrado exitosamente.', timer: 1500, showConfirmButton: false });
+            if (state.currentView === 'actos') renderActosTable();
+        }
+
+        function openEditActoModal(actoId) {
+            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            if(!acto) return;
+
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all fade-in">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800">Completar Datos del Acto</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <form onsubmit="guardarEdicionActo(event, ${actoId})" class="p-6 space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Trámite</label>
+                                <input type="text" id="edit_numero" value="${acto.numero || ''}" placeholder="Opcional" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                                <input type="date" id="edit_fecha" value="${acto.fecha}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Cuantía ($)</label>
+                                <input type="text" id="edit_cuantia" value="${acto.cuantia}" placeholder="Ej: 50000.00" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Forma de Pago</label>
+                                <select id="edit_forma_pago" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                                    <option value="">Seleccione...</option>
+                                    <option value="Efectivo" ${acto.forma_pago==='Efectivo'?'selected':''}>Efectivo</option>
+                                    <option value="Transferencia" ${acto.forma_pago==='Transferencia'?'selected':''}>Transferencia</option>
+                                    <option value="Cheque" ${acto.forma_pago==='Cheque'?'selected':''}>Cheque</option>
+                                    <option value="Indeterminada" ${acto.forma_pago==='Indeterminada'?'selected':''}>Indeterminada</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 bg-amber-500 rounded-lg text-white hover:bg-amber-600 transition-colors font-medium">Actualizar Datos</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            showModal(html);
+        }
+
+        function guardarEdicionActo(e, actoId) {
+            e.preventDefault();
+            const actoIndex = MOCK_DB.actos.findIndex(a => a.id === actoId);
+            if(actoIndex === -1) return;
+
+            MOCK_DB.actos[actoIndex].numero = document.getElementById('edit_numero').value;
+            MOCK_DB.actos[actoIndex].fecha = document.getElementById('edit_fecha').value;
+            MOCK_DB.actos[actoIndex].cuantia = document.getElementById('edit_cuantia').value;
+            MOCK_DB.actos[actoIndex].forma_pago = document.getElementById('edit_forma_pago').value;
+
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'Actualizado', text: 'Datos guardados correctamente.', timer: 1500, showConfirmButton: false });
+            if (state.currentView === 'actos') renderActosTable();
+        }
+
+        function descargarFormulario(actoId) {
+            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            if(!acto) return;
+            const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
+
+            let contenido = `====================================================\n`;
+            contenido += `           FORMULARIO DE TRÁMITE NOTARIAL           \n`;
+            contenido += `====================================================\n\n`;
+            contenido += `DATOS DEL ACTO\n`;
+            contenido += `----------------------------------------------------\n`;
+            contenido += `ID Sistema:        ${seqStr}\n`;
+            contenido += `Número de Trámite: ${acto.numero || 'Pendiente'}\n`;
+            contenido += `Tipo de Trámite:   ${acto.tipo}\n`;
+            contenido += `Categoría:         ${acto.categoria}\n`;
+            contenido += `Fecha:             ${acto.fecha}\n`;
+            contenido += `Cuantía:           $ ${acto.cuantia || '0.00'}\n`;
+            contenido += `Forma de Pago:     ${acto.forma_pago || 'No especificada'}\n\n`;
+            
+            contenido += `INTERVINIENTES\n`;
+            contenido += `----------------------------------------------------\n`;
+            if (acto.intervinientes.length === 0) {
+                contenido += `No hay intervinientes registrados.\n`;
+            } else {
+                acto.intervinientes.forEach((int, i) => {
+                    contenido += `[${i+1}] ${int.tipo.toUpperCase()}\n`;
+                    contenido += `    Nombre:         ${int.nombre}\n`;
+                    contenido += `    Identificación: ${int.identificacion}\n`;
+                    contenido += `    Nacionalidad:   ${int.nacionalidad}\n\n`;
+                });
+            }
+            contenido += `====================================================\n`;
+            contenido += `Sistema de Gestión Notarial - Generado automáticamente\n`;
+
+            const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Formulario_Acto_${acto.numero}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function openIntervinientesModal(actoId) {
+            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            if(!acto) return;
+
+            // Variables temporales para no guardar hasta confirmar
+            window._tempIntervinientes = JSON.parse(JSON.stringify(acto.intervinientes));
+            window._editIndex = -1;
+
+            window._renderListaIntervinientes = () => {
+                if(window._tempIntervinientes.length === 0) return `<p class="text-sm text-gray-500 py-4 text-center border border-dashed rounded-lg">No hay intervinientes registrados.</p>`;
+                return window._tempIntervinientes.map((int, idx) => `
+                    <div class="flex justify-between items-center p-3 bg-gray-50 border border-gray-100 rounded-lg mb-2">
+                        <div>
+                            <span class="inline-block px-2 py-1 text-[10px] font-bold rounded bg-gray-200 text-gray-700 uppercase tracking-wide mb-1">${int.tipo}</span>
+                            <p class="font-medium text-sm text-gray-800">${int.nombre}</p>
+                            <p class="text-xs text-gray-500">ID: ${int.identificacion} | Nac: ${int.nacionalidad}</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="editarInterviniente(${idx})" class="text-amber-500 hover:text-amber-700 bg-amber-50 p-1.5 rounded"><i class="fas fa-edit"></i></button>
+                            <button type="button" onclick="eliminarInterviniente(${idx})" class="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded"><i class="fas fa-times-circle"></i></button>
+                        </div>
+                    </div>
+                `).join('');
+            };
+
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden transform transition-all fade-in flex flex-col max-h-[90vh]">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800">Gestión de Intervinientes - Acto ${acto.numero}</h3>
+                        <button onclick="cancelarIntervinientes()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-sm text-gray-700 mb-3 border-b pb-2">Intervinientes Registrados</h4>
+                            <div id="lista_intervinientes_container">${window._renderListaIntervinientes()}</div>
+                        </div>
+                        <div class="flex-1 bg-blue-50/30 p-4 rounded-xl border border-blue-100 h-fit">
+                            <h4 class="font-semibold text-sm text-blue-600 mb-3" id="form_title_int">Agregar Nuevo</h4>
+                            <form onsubmit="agregarInterviniente(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Calidad</label>
+                                    <select id="int_tipo" required class="block w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                                        <option value="Otorgante">Otorgante</option>
+                                        <option value="Beneficiario">Beneficiario</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Nombre Completo</label>
+                                    <input type="text" id="int_nombre" required class="block w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Identificación</label>
+                                    <input type="text" id="int_id" required class="block w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Nacionalidad</label>
+                                    <input type="text" id="int_nacionalidad" required value="Ecuatoriana" class="block w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                                </div>
+                                <button type="submit" id="btn_submit_int" class="w-full py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-plus mr-1"></i> Agregar Interviniente
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    <!-- Footer con botones de confirmación -->
+                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                        <button type="button" onclick="cancelarIntervinientes()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-100 transition-colors">Cancelar</button>
+                        <button type="button" onclick="guardarIntervinientes(${actoId})" class="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"><i class="fas fa-save mr-1"></i> Guardar y Cerrar</button>
+                    </div>
+                </div>
+            `;
+            showModal(html);
+        }
+
+        window.editarInterviniente = function(idx) {
+            const int = window._tempIntervinientes[idx];
+            document.getElementById('int_tipo').value = int.tipo;
+            document.getElementById('int_nombre').value = int.nombre;
+            document.getElementById('int_id').value = int.identificacion;
+            document.getElementById('int_nacionalidad').value = int.nacionalidad;
+            
+            window._editIndex = idx;
+            document.getElementById('form_title_int').innerText = "Editar Interviniente";
+            document.getElementById('btn_submit_int').innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Actualizar Interviniente';
+            document.getElementById('btn_submit_int').className = "w-full py-2 bg-amber-500 text-white rounded text-sm font-medium hover:bg-amber-600 transition-colors";
+        };
+
+        function agregarInterviniente(e) {
+            e.preventDefault();
+            const nuevoInt = {
+                tipo: document.getElementById('int_tipo').value,
+                nombre: document.getElementById('int_nombre').value,
+                identificacion: document.getElementById('int_id').value,
+                nacionalidad: document.getElementById('int_nacionalidad').value
+            };
+
+            if (window._editIndex >= 0) {
+                // Modo Edición
+                window._tempIntervinientes[window._editIndex] = nuevoInt;
+                window._editIndex = -1;
+                document.getElementById('form_title_int').innerText = "Agregar Nuevo";
+                document.getElementById('btn_submit_int').innerHTML = '<i class="fas fa-plus mr-1"></i> Agregar Interviniente';
+                document.getElementById('btn_submit_int').className = "w-full py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors";
+            } else {
+                // Modo Agregar
+                window._tempIntervinientes.push(nuevoInt);
+            }
+            
+            document.getElementById('int_nombre').value = '';
+            document.getElementById('int_id').value = '';
+            document.getElementById('lista_intervinientes_container').innerHTML = window._renderListaIntervinientes();
+        }
+
+        function eliminarInterviniente(index) {
+            Swal.fire({
+                title: '¿Está seguro?',
+                text: "Desea eliminar a este interviniente del registro.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window._tempIntervinientes.splice(index, 1);
+                    document.getElementById('lista_intervinientes_container').innerHTML = window._renderListaIntervinientes();
+                }
+            });
+        }
+
+        window.guardarIntervinientes = function(actoId) {
+            const acto = MOCK_DB.actos.find(a => a.id === actoId);
+            if(acto) {
+                acto.intervinientes = window._tempIntervinientes;
+            }
+            closeModal();
+            Swal.fire({ icon: 'success', title: 'Guardado', text: 'Intervinientes actualizados.', timer: 1500, showConfirmButton: false });
+        };
+
+        window.cancelarIntervinientes = function() {
+            // Si hay algún interviniente en la lista temporal, solicitamos confirmación.
+            if (window._tempIntervinientes && window._tempIntervinientes.length > 0) {
+                Swal.fire({
+                    title: '¿Está seguro de salir?',
+                    text: "No se guardarán los cambios que no haya confirmado.",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'Sí, salir sin guardar',
+                    cancelButtonText: 'Seguir editando'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        closeModal();
+                    }
+                });
+            } else {
+                closeModal();
+            }
+        };
+
+        function eliminarActo(actoId) {
+            Swal.fire({
+                title: '¿Está seguro que desea eliminar este acto?',
+                text: "Esta acción no se puede deshacer.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    MOCK_DB.actos = MOCK_DB.actos.filter(a => a.id !== actoId);
+                    if (state.currentView === 'actos') renderActosTable();
+                    Swal.fire('Eliminado!', 'El acto ha sido eliminado.', 'success');
+                }
+            });
+        }
+
+
+        // --- MÓDULO DE REPORTES Y DESCARGA EXCEL (.xlsx) ---
+        function getReportesHTML() {
+            let notariaSelector = '';
+            if (state.currentUser.role === 1) {
+                notariaSelector = `
+                    <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+                        <label class="font-medium text-gray-700">Seleccionar Notaría:</label>
+                        <select id="filtro_notaria" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none dyn-border-primary" onchange="cambiarFiltroReportes(this.value)">
+                            <option value="">Todas las Notarías (Consolidado)</option>
+                            ${MOCK_DB.notarias.map(n => `<option value="${n.id}" ${state.filtroNotariaReporte == n.id ? 'selected':''}>${n.nombre}</option>`).join('')}
+                        </select>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="space-y-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-file-excel text-green-600 mr-2"></i> Generación de Reportes</h2>
+                            <p class="text-sm text-gray-500">Visualización tabular estructurada lista para descargar.</p>
+                        </div>
+                        <div class="flex gap-2 flex-wrap">
+                            <button onclick="exportarExcel('TODO')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors text-sm">
+                                <i class="fas fa-file-excel"></i> Descargar Todo
+                            </button>
+                            <button onclick="exportarExcel('INT')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors text-sm">
+                                <i class="fas fa-users"></i> Descargar INT
+                            </button>
+                            <button onclick="exportarExcel('TRA')" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors text-sm">
+                                <i class="fas fa-file-signature"></i> Descargar TRA
+                            </button>
+                        </div>
+                    </div>
+
+                    ${notariaSelector}
+
+                    <!-- Tabs -->
+                    <div class="border-b border-gray-200">
+                        <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                            <button onclick="switchReportTab('protocolos')" id="tab-protocolos" class="dyn-border-primary dyn-text-primary whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                                1. Protocolos
+                            </button>
+                            <button onclick="switchReportTab('vehiculos')" id="tab-vehiculos" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                                2. Rec. de Firmas de Vehículo
+                            </button>
+                            <button onclick="switchReportTab('contratos')" id="tab-contratos" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                                3. Rec. de Firmas de Contrato
+                            </button>
+                        </nav>
+                    </div>
+
+                    <div id="reporte-container" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <!-- Se llena vía JS -->
+                    </div>
+                </div>
+            `;
+        }
+
+        // Función de ayuda para obtener los actos según los filtros activos
+        function getActosFiltradosReporte() {
+            let actosFiltrados = MOCK_DB.actos;
+            if (state.currentUser.role === 2) {
+                actosFiltrados = actosFiltrados.filter(a => a.notariaId === state.currentUser.notariaId);
+            } else if (state.currentUser.role === 1 && state.filtroNotariaReporte) {
+                actosFiltrados = actosFiltrados.filter(a => a.notariaId === state.filtroNotariaReporte);
+            }
+
+            if (currentReportTab === 'protocolos') {
+                return actosFiltrados.filter(a => a.tipo === 'Protocolo');
+            } else if (currentReportTab === 'vehiculos') {
+                return actosFiltrados.filter(a => a.categoria === 'Reconocimiento de firmas de vehículo');
+            } else if (currentReportTab === 'contratos') {
+                return actosFiltrados.filter(a => a.categoria === 'Reconocimiento de firmas de contrato');
+            }
+            return actosFiltrados;
+        }
+
+        function exportarExcel(tipo) {
+            const actosFiltrados = getActosFiltradosReporte();
+            
+            if (actosFiltrados.length === 0) {
+                Swal.fire('Info', 'No hay datos para exportar.', 'info');
+                return;
+            }
+
+            let wb = XLSX.utils.book_new();
+            let ws;
+
+            if (tipo === 'TODO') {
+                const table = document.getElementById('tabla-reporte-datos');
+                if (!table) return;
+                ws = XLSX.utils.table_to_sheet(table, {sheet: currentReportTab});
+                XLSX.utils.book_append_sheet(wb, ws, currentReportTab);
+            } 
+            else if (tipo === 'INT') {
+                let data = [];
+                actosFiltrados.forEach(a => {
+                    const seqStr = `Acto-${String(a.secuencial || 0).padStart(5, '0')}`;
+                    if (a.intervinientes.length === 0) {
+                        data.push({ "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Interviniente": "SIN REGISTROS" });
+                    } else {
+                        a.intervinientes.forEach(int => {
+                            data.push({
+                                "ID Sistema": seqStr,
+                                "Nº Trámite": a.numero || "Pendiente",
+                                "Calidad": int.tipo,
+                                "Nombre": int.nombre,
+                                "Identificación": int.identificacion,
+                                "Nacionalidad": int.nacionalidad
+                            });
+                        });
+                    }
+                });
+                ws = XLSX.utils.json_to_sheet(data);
+                XLSX.utils.book_append_sheet(wb, ws, 'Intervinientes');
+            }
+            else if (tipo === 'TRA') {
+                let data = actosFiltrados.map(a => {
+                    const seqStr = `Acto-${String(a.secuencial || 0).padStart(5, '0')}`;
+                    return {
+                        "ID Sistema": seqStr,
+                        "Nº Trámite": a.numero || "Pendiente",
+                        "Tipo": a.tipo,
+                        "Categoría": a.categoria,
+                        "Fecha": a.fecha,
+                        "Cuantía": a.cuantia,
+                        "Forma Pago": a.forma_pago
+                    };
+                });
+                ws = XLSX.utils.json_to_sheet(data);
+                XLSX.utils.book_append_sheet(wb, ws, 'Trámites');
+            }
+            
+            const dateStr = new Date().toISOString().slice(0,10);
+            const fileName = `Reporte_${tipo}_${currentReportTab}_${dateStr}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            Swal.fire({ icon: 'success', title: '¡Descarga Iniciada!', text: `Se ha generado el archivo: ${fileName}`, timer: 2000, showConfirmButton: false });
+        }
+
+        function cambiarFiltroReportes(val) {
+            state.filtroNotariaReporte = val ? parseInt(val) : null;
+            renderReportesTables();
+        }
+
+        let currentReportTab = 'protocolos';
+        function switchReportTab(tab) {
+            currentReportTab = tab;
+            // Estilos Tabs
+            ['protocolos', 'vehiculos', 'contratos'].forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if(t === tab) {
+                    el.classList.remove('border-transparent', 'text-gray-500');
+                    el.classList.add('dyn-border-primary', 'dyn-text-primary');
+                } else {
+                    el.classList.add('border-transparent', 'text-gray-500');
+                    el.classList.remove('dyn-border-primary', 'dyn-text-primary');
+                }
+            });
+            renderReportesTables();
+        }
+
+        function renderReportesTables() {
+            const container = document.getElementById('reporte-container');
+            if(!container) return;
+
+            const actosFiltrados = getActosFiltradosReporte();
+
+            if (actosFiltrados.length === 0) {
+                container.innerHTML = `<div class="p-10 text-center text-gray-500"><i class="fas fa-folder-open text-4xl mb-3 opacity-30"></i><p>No hay datos para generar este reporte.</p></div>`;
+                return;
+            }
+
+            let html = `
+                <div class="overflow-x-auto max-h-[60vh] custom-scrollbar">
+                    <table id="tabla-reporte-datos" class="min-w-full text-sm border-collapse excel-table">
+                        <thead class="bg-gray-100 sticky top-0 shadow-sm z-10">
+                            <tr>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-24">ID Sistema</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-24">Nº Trámite</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 min-w-[200px]">Nombre del Acto</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-32">Fecha</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Interviniente</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-24">Calidad</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-40">Identificación</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-32">Nacionalidad</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white">
+            `;
+
+            actosFiltrados.forEach(acto => {
+                const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
+                const numTramiteStr = acto.numero || '-';
+
+                let intervinientes = [...acto.intervinientes].sort((a, b) => {
+                    if (a.tipo === 'Otorgante' && b.tipo === 'Beneficiario') return -1;
+                    if (a.tipo === 'Beneficiario' && b.tipo === 'Otorgante') return 1;
+                    return 0;
+                });
+
+                if (intervinientes.length === 0) {
+                    html += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${seqStr}</td>
+                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${numTramiteStr}</td>
+                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${acto.categoria}</td>
+                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${acto.fecha}</td>
+                            <td class="border border-gray-200 p-2 text-gray-400 italic text-center" colspan="4">Sin intervinientes registrados</td>
+                        </tr>
+                    `;
+                } else {
+                    const rowSpan = intervinientes.length;
+                    html += `<tr class="hover:bg-gray-50">
+                        <td class="border border-gray-200 p-2 text-gray-800 align-top font-semibold" rowspan="${rowSpan}">${seqStr}</td>
+                        <td class="border border-gray-200 p-2 text-gray-800 align-top" rowspan="${rowSpan}">${numTramiteStr}</td>
+                        <td class="border border-gray-200 p-2 text-gray-800 align-top" rowspan="${rowSpan}">${acto.categoria}</td>
+                        <td class="border border-gray-200 p-2 text-gray-800 align-top" rowspan="${rowSpan}">${acto.fecha}</td>
+                    `;
+
+                    intervinientes.forEach((int, index) => {
+                        if (index > 0) html += `<tr class="hover:bg-gray-50">`;
+                        
+                        html += `
+                            <td class="border border-gray-200 p-2 text-gray-800">${int.nombre}</td>
+                            <td class="border border-gray-200 p-2 text-gray-800 font-semibold text-xs uppercase">${int.tipo}</td>
+                            <td class="border border-gray-200 p-2 text-gray-800 font-mono text-xs">${int.identificacion}</td>
+                            <td class="border border-gray-200 p-2 text-gray-800">${int.nacionalidad}</td>
+                        </tr>`;
+                    });
+                }
+            });
+
+            html += `</tbody></table></div>`;
+            container.innerHTML = html;
+        }
+
+
+        // --- MÓDULO DE USUARIOS (CRUD REAL) ---
+        function getUsuariosHTML() {
+            if (state.currentUser.role === 3) return `<p class="text-red-500">Acceso denegado.</p>`;
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-users-cog text-purple-600 mr-2"></i> Gestión de Usuarios</h2>
+                            <p class="text-sm text-gray-500">Administración de credenciales y roles del sistema.</p>
+                        </div>
+                        <button onclick="openNuevoUsuarioModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors">
+                            <i class="fas fa-user-plus"></i> Nuevo Usuario
+                        </button>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 text-gray-600 text-sm border-b">
+                                    <th class="p-4 font-semibold w-24">Acciones</th>
+                                    <th class="p-4 font-semibold">Nombre</th>
+                                    <th class="p-4 font-semibold">Usuario (Login)</th>
+                                    <th class="p-4 font-semibold">Rol</th>
+                                    <th class="p-4 font-semibold">Notaría Asignada</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${generarTablaUsuarios()}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function generarTablaUsuarios() {
+            let usuariosMostrar = MOCK_DB.users;
+            
+            // Rol 2 solo ve usuarios de su notaría y que sean rol 3
+            if (state.currentUser.role === 2) {
+                usuariosMostrar = usuariosMostrar.filter(u => u.notariaId === state.currentUser.notariaId && u.role === 3);
+            }
+
+            return usuariosMostrar.map(u => {
+                const roleLabels = {1: 'SuperAdmin', 2: 'Oficial (Admin Notaría)', 3: 'Matrizador'};
+                const roleColors = {1: 'bg-red-100 text-red-800', 2: 'bg-blue-100 text-blue-800', 3: 'bg-gray-100 text-gray-800'};
+                const notariaStr = u.notariaId ? MOCK_DB.notarias.find(n => n.id === u.notariaId)?.nombre : '<span class="text-xs text-gray-400 italic">Acceso Global</span>';
+                
+                // Un admin global no debería poder eliminarse a sí mismo en esta UI simple
+                const deleteBtn = u.id !== state.currentUser.id 
+                    ? `<button onclick="eliminarUsuario(${u.id})" class="text-red-500 hover:text-red-700 transition-colors p-1" title="Eliminar Usuario"><i class="fas fa-trash-alt"></i></button>` 
+                    : '';
+                const editBtn = `<button onclick="openEditUsuarioModal(${u.id})" class="text-amber-500 hover:text-amber-700 transition-colors p-1 mr-2" title="Editar Usuario / Contraseña"><i class="fas fa-edit"></i></button>`;
+
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-4 text-center">
+                            ${editBtn}
+                            ${deleteBtn}
+                        </td>
+                        <td class="p-4 font-medium text-gray-800">${u.nombre}</td>
+                        <td class="p-4 text-gray-600">${u.username}</td>
+                        <td class="p-4">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${roleColors[u.role]}">
+                                ${roleLabels[u.role]}
+                            </span>
+                        </td>
+                        <td class="p-4 text-sm text-gray-600">${notariaStr}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openNuevoUsuarioModal() {
+            // Opciones de Rol según usuario actual
+            let roleOptions = '';
+            if (state.currentUser.role === 1) {
+                roleOptions = `
+                    <option value="1">Super Administrador</option>
+                    <option value="2">Oficial de Cumplimiento</option>
+                    <option value="3">Matrizador</option>
+                `;
+            } else if (state.currentUser.role === 2) {
+                roleOptions = `<option value="3">Matrizador</option>`;
+            }
+
+            // Opciones de Notaría
+            let notariaOptions = '';
+            if (state.currentUser.role === 1) {
+                notariaOptions = `<option value="">-- Ninguna (Acceso Global) --</option>`;
+                notariaOptions += MOCK_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('');
+                notariaOptions += `<option value="NUEVA">-- Crear Nueva Notaría --</option>`;
+            } else {
+                const miNotaria = MOCK_DB.notarias.find(n => n.id === state.currentUser.notariaId);
+                notariaOptions = `<option value="${miNotaria.id}">${miNotaria.nombre}</option>`;
+            }
+
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800">Registrar Nuevo Usuario</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <form onsubmit="guardarNuevoUsuario(event)" class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                            <input type="text" id="usr_nombre" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Usuario (Login)</label>
+                                <input type="text" id="usr_username" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                                <input type="password" id="usr_password" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Rol en el Sistema</label>
+                            <select id="usr_rol" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm bg-white" onchange="toggleNotariaFields()">
+                                ${roleOptions}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Notaría Asignada</label>
+                            <select id="usr_notaria" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm bg-white" onchange="checkNuevaNotaria()">
+                                ${notariaOptions}
+                            </select>
+                        </div>
+                        <div id="div_nueva_notaria" class="hidden bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <label class="block text-sm font-medium text-blue-800 mb-1">Nombre de la Nueva Notaría (Tenant)</label>
+                            <input type="text" id="usr_nueva_notaria_nombre" class="block w-full border border-blue-200 rounded px-3 py-2 sm:text-sm">
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 bg-purple-600 rounded-lg text-white hover:bg-purple-700 transition-colors font-medium">Crear Usuario</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            showModal(html);
+            // Ejecutar chequeos iniciales
+            window.toggleNotariaFields = function() {
+                const rolSelect = document.getElementById('usr_rol');
+                const notariaSelect = document.getElementById('usr_notaria');
+                if(rolSelect && rolSelect.value === "1") {
+                    notariaSelect.value = ""; 
+                    notariaSelect.disabled = true;
+                    document.getElementById('div_nueva_notaria').classList.add('hidden');
+                } else {
+                    notariaSelect.disabled = false;
+                }
+            };
+            window.checkNuevaNotaria = function() {
+                const val = document.getElementById('usr_notaria').value;
+                const div = document.getElementById('div_nueva_notaria');
+                const input = document.getElementById('usr_nueva_notaria_nombre');
+                if (val === 'NUEVA') {
+                    div.classList.remove('hidden');
+                    input.required = true;
+                } else {
+                    div.classList.add('hidden');
+                    input.required = false;
+                    input.value = '';
+                }
+            };
+            window.toggleNotariaFields();
+        }
+
+        function guardarNuevoUsuario(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('usr_nombre').value;
+            const username = document.getElementById('usr_username').value;
+            const password = document.getElementById('usr_password').value;
+            const rol = parseInt(document.getElementById('usr_rol').value);
+            let notariaId = document.getElementById('usr_notaria').value;
+
+            // Verificar si el username ya existe
+            if(MOCK_DB.users.some(u => u.username === username)) {
+                Swal.fire('Error', 'El nombre de usuario ya está en uso.', 'error');
+                return;
+            }
+
+            // Lógica para SuperAdmin que no necesita notaría
+            if (rol === 1) {
+                notariaId = null;
+            } else {
+                // Lógica de nueva notaría
+                if (notariaId === 'NUEVA') {
+                    const nuevaNotariaNombre = document.getElementById('usr_nueva_notaria_nombre').value;
+                    const newId = Date.now(); // ID único simulado
+                    MOCK_DB.notarias.push({ id: newId, nombre: nuevaNotariaNombre });
+                    notariaId = newId;
+                } else {
+                    notariaId = parseInt(notariaId);
+                }
+            }
+
+            MOCK_DB.users.push({
+                id: Date.now(),
+                nombre: nombre,
+                username: username,
+                password: password,
+                role: rol,
+                notariaId: notariaId
+            });
+
+            closeModal();
+            Swal.fire({ 
+                icon: 'success', 
+                title: '¡Usuario Creado!', 
+                text: 'El usuario ha sido registrado en el sistema exitosamente.', 
+                showConfirmButton: true,
+                confirmButtonColor: '#9333ea' // Purple
+            });
+            
+            if (state.currentView === 'usuarios') {
+                renderCurrentView(); // Recargar tabla
+            }
+        }
+
+        function openEditUsuarioModal(userId) {
+            const userToEdit = MOCK_DB.users.find(u => u.id === userId);
+            if (!userToEdit) return;
+
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800">Editar Usuario / Contraseña</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <form onsubmit="guardarEdicionUsuario(event, ${userId})" class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
+                            <input type="text" id="edit_usr_nombre" value="${userToEdit.nombre}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Usuario (Login)</label>
+                                <input type="text" id="edit_usr_username" value="${userToEdit.username}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
+                                <input type="password" id="edit_usr_password" placeholder="Opcional (Dejar en blanco para no cambiar)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm placeholder:text-xs">
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 bg-amber-500 rounded-lg text-white hover:bg-amber-600 transition-colors font-medium">Actualizar Usuario</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            showModal(html);
+        }
+
+        function guardarEdicionUsuario(e, userId) {
+            e.preventDefault();
+            const userIndex = MOCK_DB.users.findIndex(u => u.id === userId);
+            if (userIndex === -1) return;
+
+            const newNombre = document.getElementById('edit_usr_nombre').value;
+            const newUsername = document.getElementById('edit_usr_username').value;
+            const newPassword = document.getElementById('edit_usr_password').value;
+
+            // Verificar si el nuevo username ya existe en OTRO usuario
+            if(MOCK_DB.users.some(u => u.username === newUsername && u.id !== userId)) {
+                Swal.fire('Error', 'El nombre de usuario ya está en uso por otra persona.', 'error');
+                return;
+            }
+
+            // Actualizar datos
+            MOCK_DB.users[userIndex].nombre = newNombre;
+            MOCK_DB.users[userIndex].username = newUsername;
+            
+            // Solo actualizar la contraseña si se escribió una nueva
+            if (newPassword.trim() !== '') {
+                MOCK_DB.users[userIndex].password = newPassword;
+            }
+
+            closeModal();
+            Swal.fire({ 
+                icon: 'success', 
+                title: 'Usuario Actualizado', 
+                text: 'Los datos y/o la contraseña se guardaron correctamente.', 
+                timer: 2000, 
+                showConfirmButton: false 
+            });
+            
+            if (state.currentView === 'usuarios') renderCurrentView();
+        }
+
+        function eliminarUsuario(userId) {
+            Swal.fire({
+                title: '¿Eliminar Usuario?',
+                text: "El usuario perderá el acceso al sistema permanentemente.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    MOCK_DB.users = MOCK_DB.users.filter(u => u.id !== userId);
+                    if (state.currentView === 'usuarios') renderCurrentView();
+                    Swal.fire('Eliminado', 'El usuario fue eliminado correctamente.', 'success');
+                }
+            });
+        }
+
+        // --- MÓDULO RIESGOS ---
+        function getRiesgosHTML() {
+            return `
+                <div class="space-y-6">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-shield-alt text-red-600 mr-2"></i> Análisis de Riesgos de Lavado de Activos</h2>
+                        <p class="text-sm text-gray-500 mt-1">Módulo para identificar operaciones inusuales o injustificadas según normativa UAFE.</p>
+                    </div>
+                    <div class="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
+                        <i class="fas fa-cogs text-5xl text-gray-300 mb-4"></i>
+                        <h3 class="text-lg font-medium text-gray-700">Módulo en Construcción</h3>
+                        <p class="text-sm text-gray-500 mt-2 max-w-md mx-auto">Aquí se integrarán las reglas de negocio para alertar sobre cuantías inusuales y generar los reportes a las entidades de control (UAFE).</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- NAVEGACIÓN Y UTILIDADES ---
+
+        function navigate(view) {
+            state.currentView = view;
+            renderCurrentView();
+        }
+
+        function updateSidebarActive() {
+            if(!state.currentUser) return;
+            const items = ['dashboard', 'actos', 'reportes', 'riesgos', 'usuarios'];
+            items.forEach(item => {
+                const el = document.getElementById(`nav-${item}`);
+                if (el) {
+                    if (item === state.currentView) {
+                        el.classList.add('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
+                    } else {
+                        el.classList.remove('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
+                    }
+                }
+            });
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('login-username').value;
+            const pass = document.getElementById('login-password').value;
+            
+            const foundUser = MOCK_DB.users.find(u => u.username === user && u.password === pass);
+            
+            if (foundUser) {
+                state.currentUser = foundUser;
+                state.currentView = 'dashboard';
+                renderApp();
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: 'Credenciales incorrectas' });
+            }
+        }
+
+        function handleLogout() {
+            state.currentUser = null;
+            state.currentView = 'login';
+            renderApp();
+        }
+
+        // Sistema de Modales Custom
+        function showModal(contentHTML) {
+            const container = document.getElementById('modal-container');
+            container.innerHTML = `
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm transition-opacity z-40"></div>
+                <div class="fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+                        ${contentHTML}
+                    </div>
+                </div>
+            `;
+            container.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            const container = document.getElementById('modal-container');
+            container.classList.add('hidden');
+            container.innerHTML = '';
+        }
+
+        // Inicializar App
+        window.onload = () => {
+            renderApp();
+        };
+
+    </script>
+</body>
+</html>
