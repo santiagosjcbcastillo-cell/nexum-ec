@@ -273,7 +273,7 @@
                                 <i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span>
                             </a>
 
-                            <a href="https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                            <a href="#" onclick="openConsultaJudicialModal(); return false;" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
                                 <i class="fas fa-gavel w-5 text-center"></i> <span>Consulta de Procesos Judiciales</span>
                             </a>
 
@@ -1459,6 +1459,91 @@
             const container = document.getElementById('modal-container');
             container.classList.add('hidden');
             container.innerHTML = '';
+        }
+
+        // --- MÓDULO DE CONSULTA DE PROCESOS JUDICIALES ---
+        const URL_CONSULTA_JUDICIAL = 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros';
+
+        function getHistorialCedulas() {
+            return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
+        }
+
+        function guardarCedulaEnHistorial(cedula) {
+            let historial = getHistorialCedulas().filter(c => c !== cedula);
+            historial.unshift(cedula);
+            historial = historial.slice(0, 8);
+            localStorage.setItem('historialCedulasJudicial', JSON.stringify(historial));
+            return historial;
+        }
+
+        function openConsultaJudicialModal() {
+            const historial = getHistorialCedulas();
+            const historialHtml = historial.length === 0
+                ? `<p class="text-xs text-gray-400 italic">Aún no hay cédulas guardadas.</p>`
+                : historial.map(c => `
+                    <button type="button" onclick="document.getElementById('consulta_cedula_input').value='${c}'" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors">
+                        ${c}
+                    </button>
+                `).join('');
+
+            const html = `
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all fade-in">
+                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-gavel text-gray-500 mr-2"></i> Consulta de Procesos Judiciales</h3>
+                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-sm text-gray-500">Ingresa la cédula, cópiala y se abrirá una ventana pequeña con el sitio oficial de la Función Judicial. Ahí debes pegarla y resolver el captcha manualmente.</p>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula</label>
+                            <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
+                                class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm">
+                        </div>
+                        ${historial.length > 0 ? `
+                        <div>
+                            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Consultadas recientemente</p>
+                            <div id="consulta_historial_lista" class="flex flex-wrap gap-2">${historialHtml}</div>
+                        </div>
+                        ` : ''}
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
+                            <button type="button" onclick="copiarYAbrirConsultaJudicial()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2">
+                                <i class="fas fa-copy"></i> Copiar y Abrir Consulta
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            showModal(html);
+        }
+
+        async function copiarYAbrirConsultaJudicial() {
+            const input = document.getElementById('consulta_cedula_input');
+            const cedula = input.value.trim();
+            if (!cedula) {
+                Swal.fire('Falta la cédula', 'Ingresa un número de cédula antes de continuar.', 'warning');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(cedula);
+            } catch (error) {
+                console.warn('No se pudo copiar automáticamente al portapapeles:', error);
+            }
+
+            guardarCedulaEnHistorial(cedula);
+            closeModal();
+
+            const w = 480, h = 720;
+            const left = (screen.width / 2) - (w / 2);
+            const top = (screen.height / 2) - (h / 2);
+            window.open(
+                URL_CONSULTA_JUDICIAL,
+                'consultaProcesosJudiciales',
+                `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+            );
+
+            Swal.fire({ icon: 'success', title: 'Cédula copiada', text: 'Pégala (Ctrl+V) en el campo de búsqueda de la ventana que se abrió.', timer: 2500, showConfirmButton: false });
         }
 
         // --- INICIALIZACIÓN ---
