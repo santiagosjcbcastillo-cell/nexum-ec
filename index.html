@@ -101,7 +101,8 @@
         const LOCAL_DB = {
             notarias: [],
             users: [],
-            actos: [] 
+            actos: [],
+            fuentesConsulta: []
         };
 
         const CATEGORIAS = {
@@ -141,11 +142,22 @@
                 const actosSnap = await db.collection('actos').get();
                 LOCAL_DB.actos = actosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                // 4. Semilla: Crear SuperAdmin si no existe
+                // 4. Cargar Fuentes de Consulta Multi-Fuente
+                const fuentesSnap = await db.collection('fuentesConsulta').get();
+                LOCAL_DB.fuentesConsulta = fuentesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                // 5. Semilla: Crear SuperAdmin si no existe
                 if (LOCAL_DB.users.length === 0) {
                     const adminData = { username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' };
                     const adminRef = await db.collection('users').add(adminData);
                     LOCAL_DB.users.push({ id: adminRef.id, ...adminData });
+                }
+
+                // 6. Semilla: Fuente de consulta judicial por defecto si no existe ninguna
+                if (LOCAL_DB.fuentesConsulta.length === 0) {
+                    const fuenteData = { nombre: 'Función Judicial - Procesos Judiciales', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
+                    const fuenteRef = await db.collection('fuentesConsulta').add(fuenteData);
+                    LOCAL_DB.fuentesConsulta.push({ id: fuenteRef.id, ...fuenteData });
                 }
             } catch (error) {
                 console.error("Error al cargar datos de Firebase:", error);
@@ -175,6 +187,7 @@
                 case 'actos': content.innerHTML = getActosHTML(); renderActosTable(); break;
                 case 'reportes': content.innerHTML = getReportesHTML(); renderReportesTables(); break;
                 case 'riesgos': content.innerHTML = getRiesgosHTML(); break;
+                case 'consultas': content.innerHTML = getConsultasHTML(); renderConsultasViewer(); break;
                 default: content.innerHTML = getDashboardHTML();
             }
             updateSidebarActive();
@@ -273,8 +286,8 @@
                                 <i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span>
                             </a>
 
-                            <a href="#" onclick="openConsultaJudicialModal(); return false;" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                <i class="fas fa-gavel w-5 text-center"></i> <span>Consulta de Procesos Judiciales</span>
+                            <a href="#" onclick="navigate('consultas')" id="nav-consultas" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                <i class="fas fa-gavel w-5 text-center"></i> <span>Consultas Externas</span>
                             </a>
 
                             ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? `
@@ -1407,7 +1420,7 @@
 
         function updateSidebarActive() {
             if(!state.currentUser) return;
-            const items = ['dashboard', 'actos', 'reportes', 'riesgos', 'usuarios'];
+            const items = ['dashboard', 'actos', 'consultas', 'reportes', 'riesgos', 'usuarios'];
             items.forEach(item => {
                 const el = document.getElementById(`nav-${item}`);
                 if (el) {
@@ -1462,19 +1475,6 @@
         }
 
         // --- MÓDULO DE CONSULTA MULTI-FUENTE (Judicial, SRI, Registro Civil, etc.) ---
-        const FUENTES_CONSULTA_DEFAULT = [
-            { nombre: 'Función Judicial - Procesos Judiciales', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' }
-        ];
-
-        function getFuentesConsulta() {
-            const guardadas = JSON.parse(localStorage.getItem('fuentesConsultaMulti'));
-            return guardadas && guardadas.length ? guardadas : FUENTES_CONSULTA_DEFAULT;
-        }
-
-        function guardarFuentesConsulta(fuentes) {
-            localStorage.setItem('fuentesConsultaMulti', JSON.stringify(fuentes));
-        }
-
         function getHistorialCedulas() {
             return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
         }
@@ -1487,141 +1487,179 @@
             return historial;
         }
 
-        function openConsultaJudicialModal() {
-            const historial = getHistorialCedulas();
-            const fuentes = getFuentesConsulta();
+        function getConsultasHTML() {
+            const fuentes = LOCAL_DB.fuentesConsulta;
+            const esSuperAdmin = state.currentUser.role === 1;
 
-            const historialHtml = historial.length === 0
-                ? `<p class="text-xs text-gray-400 italic">Aún no hay cédulas guardadas.</p>`
-                : historial.map(c => `
+            if (!state.consultaTabActivaId && fuentes.length > 0) {
+                state.consultaTabActivaId = fuentes[0].id;
+            }
+
+            const tabsHtml = fuentes.map(f => `
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    <button onclick="seleccionarFuenteConsulta('${f.id}')"
+                        class="px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${state.consultaTabActivaId === f.id ? 'dyn-border-primary dyn-text-primary bg-white' : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-100'}"
+                        title="${f.url}">
+                        ${f.nombre}
+                    </button>
+                    ${esSuperAdmin ? `
+                    <button onclick="eliminarFuenteConsulta('${f.id}')" class="text-gray-400 hover:text-red-600 transition-colors px-1" title="Eliminar página">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            return `
+                <div class="h-full flex flex-col space-y-4">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <h2 class="text-xl font-bold text-gray-800 mb-1"><i class="fas fa-gavel dyn-text-primary mr-2"></i> Consultas Externas</h2>
+                        <p class="text-sm text-gray-500 mb-4">Ingresa la cédula/RUC, cópiala y navega entre las pestañas para buscar en cada fuente. Cada sitio requiere que pegues (Ctrl+V) y busques manualmente ahí.</p>
+                        <div class="flex flex-wrap items-end gap-3">
+                            <div class="flex-1 min-w-[220px]">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula / RUC</label>
+                                <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
+                                    class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm">
+                            </div>
+                            <button type="button" onclick="copiarCedulaActual()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2 h-[38px]">
+                                <i class="fas fa-copy"></i> Copiar
+                            </button>
+                            ${esSuperAdmin ? `
+                            <button type="button" onclick="mostrarFormAgregarFuente()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2 h-[38px]">
+                                <i class="fas fa-plus"></i> Agregar página
+                            </button>
+                            ` : ''}
+                        </div>
+                        <div id="consulta_historial_lista" class="flex flex-wrap gap-2 mt-3"></div>
+                        <div id="fuente-form-nueva" class="hidden mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                            <input type="text" id="nueva_fuente_nombre" placeholder="Nombre (Ej: SRI - Consulta RUC)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            <input type="text" id="nueva_fuente_url" placeholder="URL completa (https://...)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            <div class="flex justify-end gap-2">
+                                <button type="button" onclick="document.getElementById('fuente-form-nueva').classList.add('hidden')" class="px-3 py-1.5 text-sm text-gray-600">Cancelar</button>
+                                <button type="button" onclick="agregarFuenteConsulta()" class="px-3 py-1.5 text-sm text-white rounded-lg dyn-bg-primary">Guardar página</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden min-h-0">
+                        ${fuentes.length === 0
+                            ? `<div class="flex-1 flex items-center justify-center text-gray-400 text-sm">No hay páginas configuradas todavía.</div>`
+                            : `
+                            <div class="flex gap-1 px-2 pt-2 border-b border-gray-200 overflow-x-auto flex-shrink-0">${tabsHtml}</div>
+                            <div id="consulta_visor_container" class="flex-1 min-h-0 relative"></div>
+                            `
+                        }
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderConsultasViewer() {
+            const historial = getHistorialCedulas();
+            const historialContainer = document.getElementById('consulta_historial_lista');
+            if (historialContainer) {
+                historialContainer.innerHTML = historial.length === 0 ? '' : historial.map(c => `
                     <button type="button" onclick="document.getElementById('consulta_cedula_input').value='${c}'" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors">
                         ${c}
                     </button>
                 `).join('');
+            }
 
-            const fuentesHtml = fuentes.map((f, idx) => `
-                <div class="flex items-center justify-between gap-2 py-2 px-3 border border-gray-200 rounded-lg">
-                    <label class="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer">
-                        <input type="checkbox" class="fuente-checkbox w-4 h-4" data-idx="${idx}" checked>
-                        <span class="text-sm text-gray-700 truncate" title="${f.url}">${f.nombre}</span>
-                    </label>
-                    <button type="button" onclick="eliminarFuenteConsulta(${idx})" class="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0" title="Eliminar de la lista">
-                        <i class="fas fa-trash-alt text-sm"></i>
-                    </button>
-                </div>
-            `).join('');
+            const visorContainer = document.getElementById('consulta_visor_container');
+            if (!visorContainer) return;
 
-            const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-gavel text-gray-500 mr-2"></i> Consulta Multi-Fuente</h3>
-                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-                        <p class="text-sm text-gray-500">Ingresa la cédula/RUC una sola vez. Se copiará al portapapeles y se abrirá una ventana pequeña por cada página seleccionada — solo debes pegar (Ctrl+V) y buscar en cada una.</p>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula / RUC</label>
-                            <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
-                                class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm">
-                        </div>
-                        ${historial.length > 0 ? `
-                        <div>
-                            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Consultadas recientemente</p>
-                            <div id="consulta_historial_lista" class="flex flex-wrap gap-2">${historialHtml}</div>
-                        </div>
-                        ` : ''}
-                        <div>
-                            <div class="flex justify-between items-center mb-2">
-                                <p class="text-xs font-semibold text-gray-500 uppercase">Páginas a consultar</p>
-                                <button type="button" onclick="mostrarFormAgregarFuente()" class="text-xs font-medium dyn-text-primary hover:opacity-80 flex items-center gap-1">
-                                    <i class="fas fa-plus"></i> Agregar página
-                                </button>
-                            </div>
-                            <div id="fuentes-lista" class="space-y-2">${fuentesHtml}</div>
-                            <div id="fuente-form-nueva" class="hidden mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                                <input type="text" id="nueva_fuente_nombre" placeholder="Nombre (Ej: SRI - Consulta RUC)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                                <input type="text" id="nueva_fuente_url" placeholder="URL completa (https://...)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                                <div class="flex justify-end gap-2">
-                                    <button type="button" onclick="document.getElementById('fuente-form-nueva').classList.add('hidden')" class="px-3 py-1.5 text-sm text-gray-600">Cancelar</button>
-                                    <button type="button" onclick="agregarFuenteConsulta()" class="px-3 py-1.5 text-sm text-white rounded-lg dyn-bg-primary">Guardar página</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
-                            <button type="button" onclick="copiarYAbrirConsultaJudicial()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2">
-                                <i class="fas fa-copy"></i> Copiar y Abrir Seleccionadas
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            showModal(html);
-        }
-
-        function mostrarFormAgregarFuente() {
-            document.getElementById('fuente-form-nueva').classList.remove('hidden');
-        }
-
-        function agregarFuenteConsulta() {
-            const nombre = document.getElementById('nueva_fuente_nombre').value.trim();
-            const url = document.getElementById('nueva_fuente_url').value.trim();
-            if (!nombre || !/^https?:\/\/.+/.test(url)) {
-                Swal.fire('Datos incompletos', 'Ingresa un nombre y una URL válida (debe iniciar con http:// o https://).', 'warning');
+            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === state.consultaTabActivaId);
+            if (!fuente) {
+                visorContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">Selecciona una página.</div>`;
                 return;
             }
-            const fuentes = getFuentesConsulta();
-            fuentes.push({ nombre, url });
-            guardarFuentesConsulta(fuentes);
-            openConsultaJudicialModal();
+
+            visorContainer.innerHTML = `
+                <iframe src="${fuente.url}" class="absolute inset-0 w-full h-full border-0" id="consulta_iframe"></iframe>
+                <div class="absolute bottom-3 right-3 bg-white shadow-lg border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-gray-600">
+                    <span>¿No carga el contenido aquí? Algunos sitios del gobierno bloquean mostrarse embebidos.</span>
+                    <button onclick="abrirFuenteEnVentana('${fuente.id}')" class="px-2.5 py-1 dyn-bg-primary text-white rounded-md font-medium whitespace-nowrap">Abrir aparte</button>
+                </div>
+            `;
         }
 
-        function eliminarFuenteConsulta(idx) {
-            const fuentes = getFuentesConsulta();
-            fuentes.splice(idx, 1);
-            guardarFuentesConsulta(fuentes);
-            openConsultaJudicialModal();
+        function seleccionarFuenteConsulta(id) {
+            state.consultaTabActivaId = id;
+            if (state.currentView === 'consultas') {
+                const content = document.getElementById('main-content');
+                content.innerHTML = getConsultasHTML();
+                renderConsultasViewer();
+            }
         }
 
-        async function copiarYAbrirConsultaJudicial() {
+        function abrirFuenteEnVentana(id) {
+            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === id);
+            if (!fuente) return;
+            const w = 480, h = 720;
+            const left = (screen.width / 2) - (w / 2);
+            const top = (screen.height / 2) - (h / 2);
+            const ventana = window.open(
+                fuente.url,
+                'consultaExterna_' + fuente.id,
+                `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+            );
+            if (ventana) ventana.focus();
+        }
+
+        async function copiarCedulaActual() {
             const input = document.getElementById('consulta_cedula_input');
             const cedula = input.value.trim();
             if (!cedula) {
                 Swal.fire('Falta la cédula', 'Ingresa un número de cédula antes de continuar.', 'warning');
                 return;
             }
-
-            const fuentes = getFuentesConsulta();
-            const checkboxes = document.querySelectorAll('.fuente-checkbox:checked');
-            const seleccionadas = Array.from(checkboxes).map(cb => fuentes[parseInt(cb.dataset.idx)]);
-
-            if (seleccionadas.length === 0) {
-                Swal.fire('Sin páginas seleccionadas', 'Selecciona al menos una página para consultar.', 'warning');
-                return;
-            }
-
             try {
                 await navigator.clipboard.writeText(cedula);
             } catch (error) {
                 console.warn('No se pudo copiar automáticamente al portapapeles:', error);
             }
-
             guardarCedulaEnHistorial(cedula);
-            closeModal();
+            renderConsultasViewer();
+            Swal.fire({ icon: 'success', title: 'Cédula copiada', text: 'Pégala (Ctrl+V) en la página activa y busca.', timer: 2000, showConfirmButton: false });
+        }
 
-            const w = 480, h = 720;
-            seleccionadas.forEach((fuente, i) => {
-                const offset = i * 30;
-                const left = (screen.width / 2) - (w / 2) + offset;
-                const top = (screen.height / 2) - (h / 2) + offset;
-                window.open(
-                    fuente.url,
-                    'consultaMulti_' + i,
-                    `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
-                );
-            });
+        function mostrarFormAgregarFuente() {
+            document.getElementById('fuente-form-nueva').classList.remove('hidden');
+        }
 
-            Swal.fire({ icon: 'success', title: 'Cédula copiada', text: `Se abrieron ${seleccionadas.length} ventana(s). Pega (Ctrl+V) en cada una y busca.`, timer: 3000, showConfirmButton: false });
+        async function agregarFuenteConsulta() {
+            if (state.currentUser.role !== 1) return;
+            const nombre = document.getElementById('nueva_fuente_nombre').value.trim();
+            const url = document.getElementById('nueva_fuente_url').value.trim();
+            if (!nombre || !/^https?:\/\/.+/.test(url)) {
+                Swal.fire('Datos incompletos', 'Ingresa un nombre y una URL válida (debe iniciar con http:// o https://).', 'warning');
+                return;
+            }
+            try {
+                const fuenteData = { nombre, url };
+                const docRef = await db.collection('fuentesConsulta').add(fuenteData);
+                LOCAL_DB.fuentesConsulta.push({ id: docRef.id, ...fuenteData });
+                state.consultaTabActivaId = docRef.id;
+                document.getElementById('main-content').innerHTML = getConsultasHTML();
+                renderConsultasViewer();
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo guardar la página en la nube.', 'error');
+            }
+        }
+
+        async function eliminarFuenteConsulta(id) {
+            if (state.currentUser.role !== 1) return;
+            try {
+                await db.collection('fuentesConsulta').doc(id).delete();
+                LOCAL_DB.fuentesConsulta = LOCAL_DB.fuentesConsulta.filter(f => f.id !== id);
+                if (state.consultaTabActivaId === id) {
+                    state.consultaTabActivaId = LOCAL_DB.fuentesConsulta.length > 0 ? LOCAL_DB.fuentesConsulta[0].id : null;
+                }
+                document.getElementById('main-content').innerHTML = getConsultasHTML();
+                renderConsultasViewer();
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo eliminar la página.', 'error');
+            }
         }
 
         // --- INICIALIZACIÓN ---
