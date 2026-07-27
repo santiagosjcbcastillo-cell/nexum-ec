@@ -1461,8 +1461,19 @@
             container.innerHTML = '';
         }
 
-        // --- MÓDULO DE CONSULTA DE PROCESOS JUDICIALES ---
-        const URL_CONSULTA_JUDICIAL = 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros';
+        // --- MÓDULO DE CONSULTA MULTI-FUENTE (Judicial, SRI, Registro Civil, etc.) ---
+        const FUENTES_CONSULTA_DEFAULT = [
+            { nombre: 'Función Judicial - Procesos Judiciales', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' }
+        ];
+
+        function getFuentesConsulta() {
+            const guardadas = JSON.parse(localStorage.getItem('fuentesConsultaMulti'));
+            return guardadas && guardadas.length ? guardadas : FUENTES_CONSULTA_DEFAULT;
+        }
+
+        function guardarFuentesConsulta(fuentes) {
+            localStorage.setItem('fuentesConsultaMulti', JSON.stringify(fuentes));
+        }
 
         function getHistorialCedulas() {
             return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
@@ -1478,6 +1489,8 @@
 
         function openConsultaJudicialModal() {
             const historial = getHistorialCedulas();
+            const fuentes = getFuentesConsulta();
+
             const historialHtml = historial.length === 0
                 ? `<p class="text-xs text-gray-400 italic">Aún no hay cédulas guardadas.</p>`
                 : historial.map(c => `
@@ -1486,16 +1499,28 @@
                     </button>
                 `).join('');
 
+            const fuentesHtml = fuentes.map((f, idx) => `
+                <div class="flex items-center justify-between gap-2 py-2 px-3 border border-gray-200 rounded-lg">
+                    <label class="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer">
+                        <input type="checkbox" class="fuente-checkbox w-4 h-4" data-idx="${idx}" checked>
+                        <span class="text-sm text-gray-700 truncate" title="${f.url}">${f.nombre}</span>
+                    </label>
+                    <button type="button" onclick="eliminarFuenteConsulta(${idx})" class="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0" title="Eliminar de la lista">
+                        <i class="fas fa-trash-alt text-sm"></i>
+                    </button>
+                </div>
+            `).join('');
+
             const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all fade-in">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
                     <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-gavel text-gray-500 mr-2"></i> Consulta de Procesos Judiciales</h3>
+                        <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-gavel text-gray-500 mr-2"></i> Consulta Multi-Fuente</h3>
                         <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
                     </div>
-                    <div class="p-6 space-y-4">
-                        <p class="text-sm text-gray-500">Ingresa la cédula, cópiala y se abrirá una ventana pequeña con el sitio oficial de la Función Judicial. Ahí debes pegarla y resolver el captcha manualmente.</p>
+                    <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                        <p class="text-sm text-gray-500">Ingresa la cédula/RUC una sola vez. Se copiará al portapapeles y se abrirá una ventana pequeña por cada página seleccionada — solo debes pegar (Ctrl+V) y buscar en cada una.</p>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula / RUC</label>
                             <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
                                 class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm">
                         </div>
@@ -1505,10 +1530,27 @@
                             <div id="consulta_historial_lista" class="flex flex-wrap gap-2">${historialHtml}</div>
                         </div>
                         ` : ''}
-                        <div class="flex justify-end gap-3 pt-2">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <p class="text-xs font-semibold text-gray-500 uppercase">Páginas a consultar</p>
+                                <button type="button" onclick="mostrarFormAgregarFuente()" class="text-xs font-medium dyn-text-primary hover:opacity-80 flex items-center gap-1">
+                                    <i class="fas fa-plus"></i> Agregar página
+                                </button>
+                            </div>
+                            <div id="fuentes-lista" class="space-y-2">${fuentesHtml}</div>
+                            <div id="fuente-form-nueva" class="hidden mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                                <input type="text" id="nueva_fuente_nombre" placeholder="Nombre (Ej: SRI - Consulta RUC)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                <input type="text" id="nueva_fuente_url" placeholder="URL completa (https://...)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" onclick="document.getElementById('fuente-form-nueva').classList.add('hidden')" class="px-3 py-1.5 text-sm text-gray-600">Cancelar</button>
+                                    <button type="button" onclick="agregarFuenteConsulta()" class="px-3 py-1.5 text-sm text-white rounded-lg dyn-bg-primary">Guardar página</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
                             <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
                             <button type="button" onclick="copiarYAbrirConsultaJudicial()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2">
-                                <i class="fas fa-copy"></i> Copiar y Abrir Consulta
+                                <i class="fas fa-copy"></i> Copiar y Abrir Seleccionadas
                             </button>
                         </div>
                     </div>
@@ -1517,11 +1559,44 @@
             showModal(html);
         }
 
+        function mostrarFormAgregarFuente() {
+            document.getElementById('fuente-form-nueva').classList.remove('hidden');
+        }
+
+        function agregarFuenteConsulta() {
+            const nombre = document.getElementById('nueva_fuente_nombre').value.trim();
+            const url = document.getElementById('nueva_fuente_url').value.trim();
+            if (!nombre || !/^https?:\/\/.+/.test(url)) {
+                Swal.fire('Datos incompletos', 'Ingresa un nombre y una URL válida (debe iniciar con http:// o https://).', 'warning');
+                return;
+            }
+            const fuentes = getFuentesConsulta();
+            fuentes.push({ nombre, url });
+            guardarFuentesConsulta(fuentes);
+            openConsultaJudicialModal();
+        }
+
+        function eliminarFuenteConsulta(idx) {
+            const fuentes = getFuentesConsulta();
+            fuentes.splice(idx, 1);
+            guardarFuentesConsulta(fuentes);
+            openConsultaJudicialModal();
+        }
+
         async function copiarYAbrirConsultaJudicial() {
             const input = document.getElementById('consulta_cedula_input');
             const cedula = input.value.trim();
             if (!cedula) {
                 Swal.fire('Falta la cédula', 'Ingresa un número de cédula antes de continuar.', 'warning');
+                return;
+            }
+
+            const fuentes = getFuentesConsulta();
+            const checkboxes = document.querySelectorAll('.fuente-checkbox:checked');
+            const seleccionadas = Array.from(checkboxes).map(cb => fuentes[parseInt(cb.dataset.idx)]);
+
+            if (seleccionadas.length === 0) {
+                Swal.fire('Sin páginas seleccionadas', 'Selecciona al menos una página para consultar.', 'warning');
                 return;
             }
 
@@ -1535,15 +1610,18 @@
             closeModal();
 
             const w = 480, h = 720;
-            const left = (screen.width / 2) - (w / 2);
-            const top = (screen.height / 2) - (h / 2);
-            window.open(
-                URL_CONSULTA_JUDICIAL,
-                'consultaProcesosJudiciales',
-                `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
-            );
+            seleccionadas.forEach((fuente, i) => {
+                const offset = i * 30;
+                const left = (screen.width / 2) - (w / 2) + offset;
+                const top = (screen.height / 2) - (h / 2) + offset;
+                window.open(
+                    fuente.url,
+                    'consultaMulti_' + i,
+                    `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
+                );
+            });
 
-            Swal.fire({ icon: 'success', title: 'Cédula copiada', text: 'Pégala (Ctrl+V) en el campo de búsqueda de la ventana que se abrió.', timer: 2500, showConfirmButton: false });
+            Swal.fire({ icon: 'success', title: 'Cédula copiada', text: `Se abrieron ${seleccionadas.length} ventana(s). Pega (Ctrl+V) en cada una y busca.`, timer: 3000, showConfirmButton: false });
         }
 
         // --- INICIALIZACIÓN ---
