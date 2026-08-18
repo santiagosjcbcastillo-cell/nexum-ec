@@ -65,7 +65,7 @@
 
     <!-- LÓGICA DE LA APLICACIÓN -->
     <script>
-        //        const firebaseConfig = {
+        const firebaseConfig = {
             apiKey: "AIzaSyDVjVhJWhK3g1Yv0z9Yx1YLfpsX2bOGeCg",
             authDomain: "sistema-notarial-uafe.firebaseapp.com",
             projectId: "sistema-notarial-uafe",
@@ -100,34 +100,32 @@
             ]
         };
 
-        // Estado global de la aplicación
         let state = {
             currentUser: null,
             currentView: 'login',
-            filtroNotariaGeneral: null, // Para Actos y Riesgos
-            filtroNotariaReporte: null, // Para Reportes
-            adminTabActiva: 'usuarios', // Para Gestión de Usuarios (Usuarios vs Notarías)
+            filtroNotariaGeneral: null, 
+            filtroNotariaReporte: null, 
+            adminTabActiva: 'usuarios', 
             consultaTabActivaId: null
         };
 
-        //        let inactivityTimer;
-        const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 Minutos en milisegundos
+        let inactivityTimer;
+        const INACTIVITY_LIMIT = 10 * 60 * 1000; 
 
         function resetInactivityTimer() {
             clearTimeout(inactivityTimer);
             if (state.currentUser) {
                 inactivityTimer = setTimeout(() => {
-                    handleLogout(true); // Se cierra sesión por inactividad
+                    handleLogout(true); 
                 }, INACTIVITY_LIMIT);
             }
         }
 
-        // Renovar sesión si el usuario mueve el ratón o teclea
         window.addEventListener('mousemove', resetInactivityTimer);
         window.addEventListener('keydown', resetInactivityTimer);
 
 
-        //        async function loadDataFromFirebase() {
+        async function loadDataFromFirebase() {
             try {
                 const usersSnap = await db.collection('users').get();
                 LOCAL_DB.users = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -141,14 +139,12 @@
                 const fuentesSnap = await db.collection('fuentesConsulta').get();
                 LOCAL_DB.fuentesConsulta = fuentesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                // Semilla: Crear SuperAdmin si no existe en BD
                 if (LOCAL_DB.users.length === 0) {
                     const adminData = { username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' };
                     const adminRef = await db.collection('users').add(adminData);
                     LOCAL_DB.users.push({ id: adminRef.id, ...adminData });
                 }
 
-                // Semilla: e-Satje
                 if (LOCAL_DB.fuentesConsulta.length === 0) {
                     const fuenteData = { nombre: 'Consulta e-Satje', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
                     const fuenteRef = await db.collection('fuentesConsulta').add(fuenteData);
@@ -160,7 +156,7 @@
             }
         }
 
-        //        function renderApp() {
+        function renderApp() {
             const app = document.getElementById('app');
             if (!state.currentUser) {
                 app.innerHTML = getLoginHTML();
@@ -331,7 +327,7 @@
             `;
         }
 
-        //        function getActosHTML() {
+        function getActosHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
@@ -399,15 +395,11 @@
 
             let actosMostrar = LOCAL_DB.actos;
             
-            // Reglas de negocio RBAC (Control de Acceso Basado en Roles)
             if (state.currentUser.role === 2) {
-                // Oficial ve TODOS los actos de su propia notaría
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
             } else if (state.currentUser.role === 1 && state.filtroNotariaGeneral) {
-                // Admin Global ve lo que filtra
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.filtroNotariaGeneral);
             } else if (state.currentUser.role === 3) {
-                // Matrizador SOLO ve sus propios actos dentro de su notaría
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId && a.creadoPorId === state.currentUser.id);
             }
 
@@ -522,7 +514,6 @@
         async function guardarNuevoActo(e) {
             e.preventDefault();
             
-            // Determinar notaría
             let notariaId = state.currentUser.notariaId;
             if (state.currentUser.role === 1) {
                 if (state.filtroNotariaGeneral) {
@@ -572,7 +563,7 @@
             }
         }
 
-        //        function openEditActoModal(actoId) {
+        function openEditActoModal(actoId) {
             const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
 
@@ -846,7 +837,7 @@
             });
         }
 
-        //        function getHistorialCedulas() {
+        function getHistorialCedulas() {
             return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
         }
 
@@ -945,7 +936,6 @@
                 return;
             }
 
-            // Integración iFrame
             visorContainer.innerHTML = `
                 <iframe src="${fuente.url}" class="absolute inset-0 w-full h-full border-0 bg-gray-50" id="consulta_iframe"></iframe>
                 <div class="absolute bottom-3 right-3 bg-white shadow-lg border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-gray-600">
@@ -1029,7 +1019,7 @@
             });
         }
 
-        //        function getReportesHTML() {
+        function getReportesHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
@@ -1198,7 +1188,7 @@
             container.innerHTML = html;
         }
 
-        //        function getUsuariosHTML() {
+        function getUsuariosHTML() {
             if (state.currentUser.role === 3) return `<p class="text-red-500">Acceso denegado.</p>`;
             
             const esSuperAdmin = state.currentUser.role === 1;
@@ -1274,7 +1264,6 @@
             renderCurrentView();
         }
 
-        // Submódulo Notarías
         function generarCardsNotarias() {
             if (LOCAL_DB.notarias.length === 0) return `<div class="col-span-full p-8 text-center text-gray-500">No hay notarías registradas.</div>`;
             return LOCAL_DB.notarias.map(n => {
@@ -1332,7 +1321,6 @@
             });
         }
 
-        // Submódulo Usuarios
         function generarTablaUsuarios() {
             let usuariosMostrar = LOCAL_DB.users;
             if (state.currentUser.role === 2) usuariosMostrar = usuariosMostrar.filter(u => u.notariaId === state.currentUser.notariaId && u.role === 3);
@@ -1440,7 +1428,7 @@
             });
         }
 
-        //        function getRiesgosHTML() {
+        function getRiesgosHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
@@ -1464,7 +1452,7 @@
             `;
         }
 
-        //        function navigate(view) {
+        function navigate(view) {
             state.currentView = view;
             localStorage.setItem('notaryLastView', view);
             renderCurrentView();
@@ -1496,7 +1484,6 @@
                 state.currentUser = foundUser;
                 state.currentView = 'dashboard';
                 
-                // Guardar sesión y activar timer
                 localStorage.setItem('notarySession', JSON.stringify({ user: foundUser }));
                 localStorage.setItem('notaryLastView', 'dashboard');
                 resetInactivityTimer();
@@ -1518,7 +1505,7 @@
             renderApp();
             
             if (autoLogout) {
-                Swal.fire({ icon: 'info', title: 'Sesión Expirada', text: 'Su sesión se ha cerrado automáticamente por 10 minutos de inactividad por seguridad.' });
+                Swal.fire({ icon: 'info', title: 'Sesión Expirada', text: 'Su sesión se ha cerrado automáticamente por seguridad.' });
             }
         }
 
@@ -1538,12 +1525,11 @@
             container.innerHTML = '';
         }
 
-        //        window.onload = async () => {
+        window.onload = async () => {
             Swal.fire({ title: 'Conectando con NEXUM...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
             
             await loadDataFromFirebase();
             
-            // Verificar si hay una sesión guardada válida
             const savedSessionStr = localStorage.getItem('notarySession');
             if (savedSessionStr) {
                 try {
@@ -1555,7 +1541,6 @@
                         state.currentView = localStorage.getItem('notaryLastView') || 'dashboard';
                         resetInactivityTimer();
                     } else {
-                        // El usuario fue borrado de la base de datos mientras tenía sesión
                         localStorage.removeItem('notarySession'); 
                     }
                 } catch (e) {
