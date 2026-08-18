@@ -1757,6 +1757,7 @@
         // --- NAVEGACIÓN Y UTILIDADES ---
         function navigate(view) {
             state.currentView = view;
+            localStorage.setItem('notaryLastView', view); // Guardar la vista actual
             renderCurrentView();
         }
 
@@ -1785,6 +1786,12 @@
             if (foundUser) {
                 state.currentUser = foundUser;
                 state.currentView = 'dashboard';
+                
+                // Guardar sesión en LocalStorage
+                localStorage.setItem('notarySession', JSON.stringify({ user: foundUser }));
+                localStorage.setItem('notaryLastView', 'dashboard');
+                
+                resetInactivityTimer(); // Iniciar conteo regresivo
                 renderApp();
             } else {
                 Swal.fire({ icon: 'error', title: 'Error', text: 'Credenciales incorrectas' });
@@ -1794,6 +1801,12 @@
         function handleLogout() {
             state.currentUser = null;
             state.currentView = 'login';
+            
+            // Limpiar datos de sesión y detener temporizador
+            localStorage.removeItem('notarySession');
+            localStorage.removeItem('notaryLastView');
+            clearTimeout(inactivityTimer);
+            
             renderApp();
         }
 
