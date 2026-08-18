@@ -531,32 +531,45 @@
             const fecha = document.getElementById('acto_fecha').value;
             const categoria = document.getElementById('acto_categoria').value;
             
-            const actosNotaria = LOCAL_DB.actos.filter(a => a.notariaId === notariaId);
-            const maxSecuencial = actosNotaria.reduce((max, a) => Math.max(max, a.secuencial || 0), 0);
-            const nuevoSecuencial = maxSecuencial + 1;
-
-            const nuevoActoData = { 
-                notariaId: notariaId, 
-                secuencial: nuevoSecuencial, 
-                tipo: tipo, 
-                numero: numero, 
-                categoria: categoria, 
-                fecha: fecha, 
-                cuantia: '', 
-                forma_pago: '', 
-                intervinientes: [],
-                creadoPorId: state.currentUser.id,
-                creadoPorNombre: state.currentUser.nombre 
-            };
-
             try {
+                // SOLUCIÓN DE CONCURRENCIA: 
+                // En lugar de usar la memoria local (LOCAL_DB), consultamos directamente a Firebase 
+                // para obtener el secuencial más alto en ESTE preciso instante.
+                const actosSnap = await db.collection('actos').where('notariaId', '==', notariaId).get();
+                
+                let maxSecuencial = 0;
+                actosSnap.forEach(doc => {
+                    const seq = doc.data().secuencial || 0;
+                    if (seq > maxSecuencial) maxSecuencial = seq;
+                });
+                
+                const nuevoSecuencial = maxSecuencial + 1;
+
+                const nuevoActoData = { 
+                    notariaId: notariaId, 
+                    secuencial: nuevoSecuencial, 
+                    tipo: tipo, 
+                    numero: numero, 
+                    categoria: categoria, 
+                    fecha: fecha, 
+                    cuantia: '', 
+                    forma_pago: '', 
+                    intervinientes: [],
+                    creadoPorId: state.currentUser.id,
+                    creadoPorNombre: state.currentUser.nombre 
+                };
+
+                // Guardamos en la nube
                 const docRef = await db.collection('actos').add(nuevoActoData);
                 nuevoActoData.id = docRef.id;
                 
+                // Actualizamos la memoria local para que la tabla se dibuje al instante
                 LOCAL_DB.actos.push(nuevoActoData);
+                
                 closeModal();
                 Swal.fire({ icon: 'success', title: 'Guardado', text: 'El acto ha sido registrado exitosamente.', timer: 1500, showConfirmButton: false });
                 if (state.currentView === 'actos') renderActosTable();
+                
             } catch (error) {
                 console.error(error);
                 Swal.fire('Error', 'No se pudo guardar en la base de datos.', 'error');
