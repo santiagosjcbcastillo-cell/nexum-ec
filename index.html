@@ -406,12 +406,17 @@
             if(!tbody) return;
 
             let actosMostrar = LOCAL_DB.actos;
+            
+            // FILTRO DE ROLES PARA ACTOS
             if (state.currentUser.role === 2) {
+                // Oficial ve todos los actos de su notaría
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
             } else if (state.currentUser.role === 1 && state.filtroNotariaGeneral) {
+                // SuperAdmin ve lo que seleccione en el filtro
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.filtroNotariaGeneral);
             } else if (state.currentUser.role === 3) {
-                actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
+                // Matrizador SOLO ve los actos de su notaría creados por él mismo
+                actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId && a.creadoPorId === state.currentUser.id);
             }
 
             const termino = buscadorInput ? buscadorInput.value.toLowerCase() : '';
@@ -534,7 +539,6 @@
             // Determinar notaría a la que va el acto
             let notariaId = state.currentUser.notariaId;
             if (state.currentUser.role === 1) {
-                // Si el SuperAdmin tiene filtrada una notaría, guardarlo ahí. Si no, obligarlo a elegir.
                 if (state.filtroNotariaGeneral) {
                     notariaId = state.filtroNotariaGeneral;
                 } else {
