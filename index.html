@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestión Notarial - SaaS</title>
+    <title>NEXUM - Sistema de Gestión Notarial</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome para Iconos -->
@@ -22,7 +22,7 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: 'var(--color-primary)', 
+                        primary: '#1e3a8a', 
                         secondary: '#3b82f6',
                         accent: '#fbbf24',
                     }
@@ -31,9 +31,6 @@
         }
     </script>
     <style>
-        :root {
-            --color-primary: #1e3a8a; 
-        }
         body { font-family: 'Inter', system-ui, sans-serif; }
         .glass-effect {
             background: rgba(255, 255, 255, 0.95);
@@ -49,9 +46,9 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        .dyn-bg-primary { background-color: var(--color-primary) !important; }
-        .dyn-text-primary { color: var(--color-primary) !important; }
-        .dyn-border-primary { border-color: var(--color-primary) !important; }
+        .dyn-bg-primary { background-color: #1e3a8a !important; }
+        .dyn-text-primary { color: #1e3a8a !important; }
+        .dyn-border-primary { border-color: #1e3a8a !important; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 overflow-hidden">
@@ -68,8 +65,7 @@
 
     <!-- LÓGICA DE LA APLICACIÓN -->
     <script>
-        // --- 1. CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
-        const firebaseConfig = {
+        //        const firebaseConfig = {
             apiKey: "AIzaSyDVjVhJWhK3g1Yv0z9Yx1YLfpsX2bOGeCg",
             authDomain: "sistema-notarial-uafe.firebaseapp.com",
             projectId: "sistema-notarial-uafe",
@@ -81,22 +77,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // --- CONFIGURACIÓN DINÁMICA DE LA INTERFAZ ---
-        let sysConfig = JSON.parse(localStorage.getItem('notarySysConfig')) || {
-            tituloApp: 'NEXUM',
-            colorPrincipal: '#1e3a8a'
-        };
-
-        function aplicarConfiguracion() {
-            document.documentElement.style.setProperty('--color-primary', sysConfig.colorPrincipal);
-            document.title = sysConfig.tituloApp + ' - Gestión Notarial';
-            
-            const titleElements = document.querySelectorAll('.app-title-text');
-            titleElements.forEach(el => el.innerText = sysConfig.tituloApp);
-        }
-        aplicarConfiguracion();
-
-        // --- 2. BASE DE DATOS LOCAL (Sincronizada con Firebase) ---
         const LOCAL_DB = {
             notarias: [],
             users: [],
@@ -120,16 +100,34 @@
             ]
         };
 
+        // Estado global de la aplicación
         let state = {
             currentUser: null,
             currentView: 'login',
-            filtroNotariaGeneral: null, // Para filtrar la vista actual (Actos, Riesgos)
-            filtroNotariaReporte: null,
-            adminTabActiva: 'usuarios' // Controla si se ven Usuarios o Notarías
+            filtroNotariaGeneral: null, // Para Actos y Riesgos
+            filtroNotariaReporte: null, // Para Reportes
+            adminTabActiva: 'usuarios', // Para Gestión de Usuarios (Usuarios vs Notarías)
+            consultaTabActivaId: null
         };
 
-        // --- CARGAR DATOS DESDE LA NUBE ---
-        async function loadDataFromFirebase() {
+        //        let inactivityTimer;
+        const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 Minutos en milisegundos
+
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimer);
+            if (state.currentUser) {
+                inactivityTimer = setTimeout(() => {
+                    handleLogout(true); // Se cierra sesión por inactividad
+                }, INACTIVITY_LIMIT);
+            }
+        }
+
+        // Renovar sesión si el usuario mueve el ratón o teclea
+        window.addEventListener('mousemove', resetInactivityTimer);
+        window.addEventListener('keydown', resetInactivityTimer);
+
+
+        //        async function loadDataFromFirebase() {
             try {
                 const usersSnap = await db.collection('users').get();
                 LOCAL_DB.users = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -143,16 +141,16 @@
                 const fuentesSnap = await db.collection('fuentesConsulta').get();
                 LOCAL_DB.fuentesConsulta = fuentesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                // Semilla: Crear SuperAdmin si no existe
+                // Semilla: Crear SuperAdmin si no existe en BD
                 if (LOCAL_DB.users.length === 0) {
                     const adminData = { username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' };
                     const adminRef = await db.collection('users').add(adminData);
                     LOCAL_DB.users.push({ id: adminRef.id, ...adminData });
                 }
 
-                // Semilla: Fuente de consulta judicial por defecto si no existe ninguna
+                // Semilla: e-Satje
                 if (LOCAL_DB.fuentesConsulta.length === 0) {
-                    const fuenteData = { nombre: 'Función Judicial - Procesos Judiciales', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
+                    const fuenteData = { nombre: 'Consulta e-Satje', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
                     const fuenteRef = await db.collection('fuentesConsulta').add(fuenteData);
                     LOCAL_DB.fuentesConsulta.push({ id: fuenteRef.id, ...fuenteData });
                 }
@@ -162,8 +160,7 @@
             }
         }
 
-        // --- FUNCIONES PRINCIPALES DE RENDERIZADO ---
-        function renderApp() {
+        //        function renderApp() {
             const app = document.getElementById('app');
             if (!state.currentUser) {
                 app.innerHTML = getLoginHTML();
@@ -171,7 +168,6 @@
                 app.innerHTML = getLayoutHTML();
                 renderCurrentView();
             }
-            aplicarConfiguracion();
         }
 
         function renderCurrentView() {
@@ -188,19 +184,17 @@
                 default: content.innerHTML = getDashboardHTML();
             }
             updateSidebarActive();
-            aplicarConfiguracion();
         }
 
-        // --- COMPONENTES HTML (Plantillas) ---
         function getLoginHTML() {
             return `
-                <div class="flex items-center justify-center h-full w-full bg-gradient-to-br dyn-bg-primary to-blue-800" style="background-color: var(--color-primary);">
+                <div class="flex items-center justify-center h-full w-full bg-gradient-to-br dyn-bg-primary to-blue-800">
                     <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md fade-in glass-effect">
                         <div class="text-center mb-8">
                             <div class="inline-flex items-center justify-center w-16 h-16 rounded-full dyn-bg-primary text-white mb-4 shadow-lg">
                                 <i class="fas fa-balance-scale text-3xl"></i>
                             </div>
-                            <h1 class="text-2xl font-bold text-gray-800 app-title-text">${sysConfig.tituloApp}</h1>
+                            <h1 class="text-2xl font-bold text-gray-800">NEXUM</h1>
                             <p class="text-gray-500 text-sm mt-2">Ingrese sus credenciales para acceder</p>
                         </div>
                         <form onsubmit="handleLogin(event)" class="space-y-5">
@@ -240,11 +234,10 @@
             const notariaName = state.currentUser.notariaId ? LOCAL_DB.notarias.find(n => n.id === state.currentUser.notariaId)?.nombre : 'Global';
 
             return `
-                <!-- Topbar -->
                 <header class="bg-white shadow-sm z-10 w-full flex-shrink-0 h-16 flex items-center justify-between px-6">
                     <div class="flex items-center gap-3">
                         <i class="fas fa-balance-scale dyn-text-primary text-2xl"></i>
-                        <span class="font-bold text-lg text-gray-800 tracking-tight app-title-text">${sysConfig.tituloApp}</span>
+                        <span class="font-bold text-lg text-gray-800 tracking-tight">NEXUM</span>
                     </div>
                     <div class="flex items-center gap-6">
                         ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? 
@@ -273,12 +266,12 @@
                                 <i class="fas fa-home w-5 text-center"></i> <span>Inicio</span>
                             </a>
                             
-                            <a href="#" onclick="navigate('actos')" id="nav-actos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                <i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span>
+                            <a href="#" onclick="navigate('consultas')" id="nav-consultas" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors text-amber-300 font-medium">
+                                <i class="fas fa-gavel w-5 text-center"></i> <span>Consultas Externas</span>
                             </a>
 
-                            <a href="#" onclick="navigate('consultas')" id="nav-consultas" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                <i class="fas fa-gavel w-5 text-center"></i> <span>Consultas Externas</span>
+                            <a href="#" onclick="navigate('actos')" id="nav-actos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
+                                <i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span>
                             </a>
 
                             ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? `
@@ -307,19 +300,19 @@
                         <i class="fas fa-balance-scale text-6xl dyn-text-primary"></i>
                     </div>
                     <div>
-                        <h2 class="text-3xl font-bold text-gray-800">Bienvenido a <span class="app-title-text">${sysConfig.tituloApp}</span></h2>
+                        <h2 class="text-3xl font-bold text-gray-800">Bienvenido a NEXUM</h2>
                         <p class="text-gray-500 mt-2 max-w-lg mx-auto">Plataforma integral para el control de actos, diligencias, cumplimiento y reportes operativos.</p>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-8 w-full max-w-5xl">
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('consultas')">
+                            <div class="bg-amber-50 p-3 rounded-full text-amber-600 mb-3"><i class="fas fa-gavel text-xl"></i></div>
+                            <h3 class="font-semibold text-gray-700">Due Diligence</h3>
+                            <p class="text-xs text-gray-400 mt-1">Consultas Externas</p>
+                        </div>
                         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('actos')">
                             <div class="bg-blue-50 p-3 rounded-full text-blue-600 mb-3"><i class="fas fa-file-alt text-xl"></i></div>
                             <h3 class="font-semibold text-gray-700">Actos Notariales</h3>
                             <p class="text-xs text-gray-400 mt-1">Gestionar protocolos y diligencias</p>
-                        </div>
-                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('consultas')">
-                            <div class="bg-gray-100 p-3 rounded-full text-gray-600 mb-3"><i class="fas fa-gavel text-xl"></i></div>
-                            <h3 class="font-semibold text-gray-700">Due Diligence</h3>
-                            <p class="text-xs text-gray-400 mt-1">Consultas Externas</p>
                         </div>
                         ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? `
                         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('reportes')">
@@ -338,8 +331,7 @@
             `;
         }
 
-        // --- MÓDULO DE ACTOS ---
-        function getActosHTML() {
+        //        function getActosHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
@@ -397,7 +389,7 @@
         function cambiarFiltroGeneral(val) {
             state.filtroNotariaGeneral = val || null;
             if (state.currentView === 'actos') renderActosTable();
-            if (state.currentView === 'riesgos') renderCurrentView(); // Si hubiera tabla en riesgos
+            if (state.currentView === 'riesgos') renderCurrentView(); 
         }
 
         function renderActosTable() {
@@ -407,15 +399,15 @@
 
             let actosMostrar = LOCAL_DB.actos;
             
-            // FILTRO DE ROLES PARA ACTOS
+            // Reglas de negocio RBAC (Control de Acceso Basado en Roles)
             if (state.currentUser.role === 2) {
-                // Oficial ve todos los actos de su notaría
+                // Oficial ve TODOS los actos de su propia notaría
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
             } else if (state.currentUser.role === 1 && state.filtroNotariaGeneral) {
-                // SuperAdmin ve lo que seleccione en el filtro
+                // Admin Global ve lo que filtra
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.filtroNotariaGeneral);
             } else if (state.currentUser.role === 3) {
-                // Matrizador SOLO ve los actos de su notaría creados por él mismo
+                // Matrizador SOLO ve sus propios actos dentro de su notaría
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId && a.creadoPorId === state.currentUser.id);
             }
 
@@ -440,7 +432,7 @@
                 const numTramiteHtml = acto.numero ? acto.numero : '<span class="text-gray-400 italic text-xs">Pendiente</span>';
                 
                 const colCreadoPor = (state.currentUser.role === 1 || state.currentUser.role === 2) ? 
-                    `<td class="p-4 text-sm text-gray-600">${acto.creadoPorNombre || 'Sistema'}</td>` : '';
+                    `<td class="p-4 text-sm font-medium text-gray-600"><i class="fas fa-user-edit text-gray-400 mr-1"></i> ${acto.creadoPorNombre || 'Sistema'}</td>` : '';
 
                 return `
                 <tr class="hover:bg-blue-50/50 transition-colors group">
@@ -529,6 +521,18 @@
 
         async function guardarNuevoActo(e) {
             e.preventDefault();
+            
+            // Determinar notaría
+            let notariaId = state.currentUser.notariaId;
+            if (state.currentUser.role === 1) {
+                if (state.filtroNotariaGeneral) {
+                    notariaId = state.filtroNotariaGeneral;
+                } else {
+                    Swal.fire('Atención', 'Como Administrador Global, primero seleccione una Notaría en el filtro superior para asignar este acto.', 'warning');
+                    return;
+                }
+            }
+
             Swal.fire({ title: 'Guardando en la nube...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
 
             const tipo = document.querySelector('input[name="tipo_tramite"]:checked').value;
@@ -536,17 +540,6 @@
             const fecha = document.getElementById('acto_fecha').value;
             const categoria = document.getElementById('acto_categoria').value;
             
-            // Determinar notaría a la que va el acto
-            let notariaId = state.currentUser.notariaId;
-            if (state.currentUser.role === 1) {
-                if (state.filtroNotariaGeneral) {
-                    notariaId = state.filtroNotariaGeneral;
-                } else {
-                    Swal.fire('Atención', 'Como Administrador Global, primero debe seleccionar una "Notaría" en el filtro de la parte superior antes de crear un Acto.', 'warning');
-                    return;
-                }
-            }
-
             const actosNotaria = LOCAL_DB.actos.filter(a => a.notariaId === notariaId);
             const maxSecuencial = actosNotaria.reduce((max, a) => Math.max(max, a.secuencial || 0), 0);
             const nuevoSecuencial = maxSecuencial + 1;
@@ -579,11 +572,12 @@
             }
         }
 
-        function openEditActoModal(actoId) {
+        //        function openEditActoModal(actoId) {
             const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
 
             const roleName = state.currentUser.role === 1 ? 'SuperAdmin' : (state.currentUser.role === 2 ? 'Oficial' : 'Matrizador');
+            
             window._tempEditIntervinientes = JSON.parse(JSON.stringify(acto.intervinientes || []));
 
             const html = `
@@ -747,14 +741,14 @@
 
         async function guardarEdicionActo(e, actoId) {
             e.preventDefault();
-            window.syncIntervinientesForm();
+            window.syncIntervinientesForm(); 
 
             let isValid = true;
             for(let int of window._tempEditIntervinientes) {
                 if(!int.identificacion || !int.nombre || !int.nacionalidad) isValid = false;
             }
             if(!isValid) {
-                Swal.fire('Campos Incompletos', 'Por favor, complete todos los campos obligatorios de los intervinientes antes de guardar.', 'warning');
+                Swal.fire('Campos Incompletos', 'Por favor, complete todos los campos obligatorios de los intervinientes.', 'warning');
                 return;
             }
 
@@ -774,6 +768,7 @@
             try {
                 await db.collection('actos').doc(actoId).update(updateData);
                 LOCAL_DB.actos[actoIndex] = { ...LOCAL_DB.actos[actoIndex], ...updateData };
+                
                 closeModal();
                 Swal.fire({ icon: 'success', title: 'Actualizado', text: 'El acto y sus intervinientes fueron guardados.', timer: 2000, showConfirmButton: false });
                 if (state.currentView === 'actos') renderActosTable();
@@ -828,7 +823,7 @@
 
         function eliminarActo(actoId) {
             Swal.fire({
-                title: '¿Está seguro que desea eliminar este acto?',
+                title: '¿Eliminar acto?',
                 text: "Esta acción lo borrará permanentemente de la nube.",
                 icon: 'warning',
                 showCancelButton: true,
@@ -843,7 +838,7 @@
                         await db.collection('actos').doc(actoId).delete();
                         LOCAL_DB.actos = LOCAL_DB.actos.filter(a => a.id !== actoId);
                         if (state.currentView === 'actos') renderActosTable();
-                        Swal.fire('Eliminado!', 'El acto ha sido eliminado de la nube.', 'success');
+                        Swal.fire('Eliminado!', 'El acto ha sido eliminado.', 'success');
                     } catch (error) {
                         Swal.fire('Error', 'No se pudo eliminar el registro.', 'error');
                     }
@@ -851,8 +846,190 @@
             });
         }
 
-        // --- MÓDULO DE REPORTES Y DESCARGA EXCEL (.xlsx) ---
-        function getReportesHTML() {
+        //        function getHistorialCedulas() {
+            return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
+        }
+
+        function guardarCedulaEnHistorial(cedula) {
+            let historial = getHistorialCedulas().filter(c => c !== cedula);
+            historial.unshift(cedula);
+            historial = historial.slice(0, 8);
+            localStorage.setItem('historialCedulasJudicial', JSON.stringify(historial));
+            return historial;
+        }
+
+        function getConsultasHTML() {
+            const fuentes = LOCAL_DB.fuentesConsulta;
+            const esSuperAdmin = state.currentUser.role === 1;
+
+            if (!state.consultaTabActivaId && fuentes.length > 0) {
+                state.consultaTabActivaId = fuentes[0].id;
+            }
+
+            const tabsHtml = fuentes.map(f => `
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    <button onclick="seleccionarFuenteConsulta('${f.id}')"
+                        class="px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${state.consultaTabActivaId === f.id ? 'dyn-border-primary dyn-text-primary bg-white' : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-100'}"
+                        title="${f.url}">
+                        ${f.nombre}
+                    </button>
+                    ${esSuperAdmin ? `
+                    <button onclick="eliminarFuenteConsulta('${f.id}')" class="text-gray-400 hover:text-red-600 transition-colors px-1" title="Eliminar página">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            return `
+                <div class="h-full flex flex-col space-y-4">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <h2 class="text-xl font-bold text-gray-800 mb-1"><i class="fas fa-gavel dyn-text-primary mr-2"></i> Consultas Externas (Due Diligence)</h2>
+                        <p class="text-sm text-gray-500 mb-4">Ingresa la cédula/RUC, cópiala y navega entre las pestañas para buscar en cada fuente gubernamental.</p>
+                        <div class="flex flex-wrap items-end gap-3">
+                            <div class="flex-1 min-w-[220px]">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula / RUC</label>
+                                <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
+                                    class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm shadow-sm">
+                            </div>
+                            <button type="button" onclick="copiarCedulaActual()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2 h-[38px] shadow-sm">
+                                <i class="fas fa-copy"></i> Copiar
+                            </button>
+                            ${esSuperAdmin ? `
+                            <button type="button" onclick="mostrarFormAgregarFuente()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2 h-[38px] shadow-sm">
+                                <i class="fas fa-plus"></i> Agregar página
+                            </button>
+                            ` : ''}
+                        </div>
+                        <div id="consulta_historial_lista" class="flex flex-wrap gap-2 mt-3"></div>
+                        <div id="fuente-form-nueva" class="hidden mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                            <input type="text" id="nueva_fuente_nombre" placeholder="Nombre (Ej: SRI - Consulta RUC)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            <input type="text" id="nueva_fuente_url" placeholder="URL completa (https://...)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            <div class="flex justify-end gap-2">
+                                <button type="button" onclick="document.getElementById('fuente-form-nueva').classList.add('hidden')" class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-200 rounded">Cancelar</button>
+                                <button type="button" onclick="agregarFuenteConsulta()" class="px-3 py-1.5 text-sm text-white rounded-lg dyn-bg-primary">Guardar página</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden min-h-0">
+                        ${fuentes.length === 0
+                            ? `<div class="flex-1 flex items-center justify-center text-gray-400 text-sm">No hay páginas configuradas todavía.</div>`
+                            : `
+                            <div class="flex gap-1 px-2 pt-2 border-b border-gray-200 overflow-x-auto flex-shrink-0">${tabsHtml}</div>
+                            <div id="consulta_visor_container" class="flex-1 min-h-0 relative"></div>
+                            `
+                        }
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderConsultasViewer() {
+            const historial = getHistorialCedulas();
+            const historialContainer = document.getElementById('consulta_historial_lista');
+            if (historialContainer) {
+                historialContainer.innerHTML = historial.length === 0 ? '' : historial.map(c => `
+                    <button type="button" onclick="document.getElementById('consulta_cedula_input').value='${c}'" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors border border-gray-200">
+                        ${c}
+                    </button>
+                `).join('');
+            }
+
+            const visorContainer = document.getElementById('consulta_visor_container');
+            if (!visorContainer) return;
+
+            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === state.consultaTabActivaId);
+            if (!fuente) {
+                visorContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">Selecciona una página.</div>`;
+                return;
+            }
+
+            // Integración iFrame
+            visorContainer.innerHTML = `
+                <iframe src="${fuente.url}" class="absolute inset-0 w-full h-full border-0 bg-gray-50" id="consulta_iframe"></iframe>
+                <div class="absolute bottom-3 right-3 bg-white shadow-lg border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-gray-600">
+                    <span>¿No carga? Algunos sitios bloquean mostrarse embebidos.</span>
+                    <button onclick="abrirFuenteEnVentana('${fuente.id}')" class="px-2.5 py-1.5 dyn-bg-primary text-white rounded-md font-medium whitespace-nowrap hover:opacity-90 shadow-sm">Abrir aparte</button>
+                </div>
+            `;
+        }
+
+        function seleccionarFuenteConsulta(id) {
+            state.consultaTabActivaId = id;
+            if (state.currentView === 'consultas') {
+                const content = document.getElementById('main-content');
+                content.innerHTML = getConsultasHTML();
+                renderConsultasViewer();
+            }
+        }
+
+        function abrirFuenteEnVentana(id) {
+            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === id);
+            if (!fuente) return;
+            const w = 1000, h = 800;
+            const left = (screen.width / 2) - (w / 2);
+            const top = (screen.height / 2) - (h / 2);
+            const ventana = window.open(fuente.url, 'consultaExterna_' + fuente.id, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+            if (ventana) ventana.focus();
+        }
+
+        async function copiarCedulaActual() {
+            const input = document.getElementById('consulta_cedula_input');
+            const cedula = input.value.trim();
+            if (!cedula) {
+                Swal.fire('Falta la cédula', 'Ingresa un número de cédula antes de continuar.', 'warning');
+                return;
+            }
+            try { await navigator.clipboard.writeText(cedula); } catch (e) {}
+            guardarCedulaEnHistorial(cedula);
+            renderConsultasViewer();
+            Swal.fire({ icon: 'success', title: 'Copiada', text: 'Pégala (Ctrl+V) en la página activa para buscar.', timer: 2000, showConfirmButton: false });
+        }
+
+        function mostrarFormAgregarFuente() {
+            document.getElementById('fuente-form-nueva').classList.remove('hidden');
+        }
+
+        async function agregarFuenteConsulta() {
+            if (state.currentUser.role !== 1) return;
+            const nombre = document.getElementById('nueva_fuente_nombre').value.trim();
+            const url = document.getElementById('nueva_fuente_url').value.trim();
+            if (!nombre || !/^https?:\/\/.+/.test(url)) {
+                Swal.fire('Datos incompletos', 'Ingresa un nombre y una URL válida.', 'warning');
+                return;
+            }
+            Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            try {
+                const fuenteData = { nombre, url };
+                const docRef = await db.collection('fuentesConsulta').add(fuenteData);
+                LOCAL_DB.fuentesConsulta.push({ id: docRef.id, ...fuenteData });
+                state.consultaTabActivaId = docRef.id;
+                document.getElementById('main-content').innerHTML = getConsultasHTML();
+                renderConsultasViewer();
+                Swal.close();
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo guardar la página.', 'error');
+            }
+        }
+
+        async function eliminarFuenteConsulta(id) {
+            if (state.currentUser.role !== 1) return;
+            Swal.fire({ title: '¿Eliminar Pestaña?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí' })
+            .then(async (result) => {
+                if (result.isConfirmed) {
+                    try {
+                        await db.collection('fuentesConsulta').doc(id).delete();
+                        LOCAL_DB.fuentesConsulta = LOCAL_DB.fuentesConsulta.filter(f => f.id !== id);
+                        if (state.consultaTabActivaId === id) state.consultaTabActivaId = LOCAL_DB.fuentesConsulta.length > 0 ? LOCAL_DB.fuentesConsulta[0].id : null;
+                        document.getElementById('main-content').innerHTML = getConsultasHTML();
+                        renderConsultasViewer();
+                    } catch (error) {}
+                }
+            });
+        }
+
+        //        function getReportesHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
@@ -928,14 +1105,9 @@
 
         function exportarExcel(tipo) {
             const actosFiltrados = getActosFiltradosReporte();
-            
-            if (actosFiltrados.length === 0) {
-                Swal.fire('Info', 'No hay datos para exportar.', 'info');
-                return;
-            }
+            if (actosFiltrados.length === 0) { Swal.fire('Info', 'No hay datos para exportar.', 'info'); return; }
 
-            let wb = XLSX.utils.book_new();
-            let ws;
+            let wb = XLSX.utils.book_new(); let ws;
 
             if (tipo === 'TODO') {
                 const table = document.getElementById('tabla-reporte-datos');
@@ -951,61 +1123,33 @@
                         data.push({ "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Interviniente": "SIN REGISTROS" });
                     } else {
                         a.intervinientes.forEach(int => {
-                            data.push({
-                                "ID Sistema": seqStr,
-                                "Nº Trámite": a.numero || "Pendiente",
-                                "Calidad": int.tipo,
-                                "Nombre": int.nombre,
-                                "Identificación": int.identificacion,
-                                "Nacionalidad": int.nacionalidad
-                            });
+                            data.push({ "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Calidad": int.tipo, "Nombre": int.nombre, "Identificación": int.identificacion, "Nacionalidad": int.nacionalidad });
                         });
                     }
                 });
-                ws = XLSX.utils.json_to_sheet(data);
-                XLSX.utils.book_append_sheet(wb, ws, 'Intervinientes');
+                ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, 'Intervinientes');
             }
             else if (tipo === 'TRA') {
                 let data = actosFiltrados.map(a => {
                     const seqStr = `Acto-${String(a.secuencial || 0).padStart(5, '0')}`;
-                    return {
-                        "ID Sistema": seqStr,
-                        "Nº Trámite": a.numero || "Pendiente",
-                        "Tipo": a.tipo,
-                        "Categoría": a.categoria,
-                        "Fecha": a.fecha,
-                        "Cuantía": a.cuantia,
-                        "Forma Pago": a.forma_pago,
-                        "Creado Por": a.creadoPorNombre || ''
-                    };
+                    return { "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Tipo": a.tipo, "Categoría": a.categoria, "Fecha": a.fecha, "Cuantía": a.cuantia, "Forma Pago": a.forma_pago };
                 });
-                ws = XLSX.utils.json_to_sheet(data);
-                XLSX.utils.book_append_sheet(wb, ws, 'Trámites');
+                ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, 'Trámites');
             }
             
-            const dateStr = new Date().toISOString().slice(0,10);
-            const fileName = `Reporte_${tipo}_${currentReportTab}_${dateStr}.xlsx`;
-            XLSX.writeFile(wb, fileName);
-            Swal.fire({ icon: 'success', title: '¡Descarga Iniciada!', text: `Se ha generado el archivo: ${fileName}`, timer: 2000, showConfirmButton: false });
+            XLSX.writeFile(wb, `Reporte_${tipo}_${currentReportTab}_${new Date().toISOString().slice(0,10)}.xlsx`);
+            Swal.fire({ icon: 'success', title: 'Descarga Iniciada', timer: 2000, showConfirmButton: false });
         }
 
-        function cambiarFiltroReportes(val) {
-            state.filtroNotariaReporte = val || null;
-            renderReportesTables();
-        }
+        function cambiarFiltroReportes(val) { state.filtroNotariaReporte = val || null; renderReportesTables(); }
 
         let currentReportTab = 'protocolos';
         function switchReportTab(tab) {
             currentReportTab = tab;
             ['protocolos', 'vehiculos', 'contratos'].forEach(t => {
                 const el = document.getElementById(`tab-${t}`);
-                if(t === tab) {
-                    el.classList.remove('border-transparent', 'text-gray-500');
-                    el.classList.add('dyn-border-primary', 'dyn-text-primary');
-                } else {
-                    el.classList.add('border-transparent', 'text-gray-500');
-                    el.classList.remove('dyn-border-primary', 'dyn-text-primary');
-                }
+                if(t === tab) { el.classList.remove('border-transparent', 'text-gray-500'); el.classList.add('dyn-border-primary', 'dyn-text-primary'); } 
+                else { el.classList.add('border-transparent', 'text-gray-500'); el.classList.remove('dyn-border-primary', 'dyn-text-primary'); }
             });
             renderReportesTables();
         }
@@ -1013,12 +1157,9 @@
         function renderReportesTables() {
             const container = document.getElementById('reporte-container');
             if(!container) return;
-
             const actosFiltrados = getActosFiltradosReporte();
-
             if (actosFiltrados.length === 0) {
-                container.innerHTML = `<div class="p-10 text-center text-gray-500"><i class="fas fa-folder-open text-4xl mb-3 opacity-30"></i><p>No hay datos para generar este reporte.</p></div>`;
-                return;
+                container.innerHTML = `<div class="p-10 text-center text-gray-500"><i class="fas fa-folder-open text-4xl mb-3 opacity-30"></i><p>No hay datos.</p></div>`; return;
             }
 
             let html = `
@@ -1026,80 +1167,51 @@
                     <table id="tabla-reporte-datos" class="min-w-full text-sm border-collapse excel-table">
                         <thead class="bg-gray-100 sticky top-0 shadow-sm z-10">
                             <tr>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-24">ID Sistema</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-24">Nº Trámite</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">ID</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Trámite</th>
                                 <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 min-w-[200px]">Nombre del Acto</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-32">Fecha</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Fecha</th>
                                 <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Interviniente</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-24">Calidad</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-40">Identificación</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 w-32">Nacionalidad</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Calidad</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Identificación</th>
+                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Nacionalidad</th>
                             </tr>
                         </thead>
-                        <tbody class="bg-white">
-            `;
+                        <tbody class="bg-white">`;
 
             actosFiltrados.forEach(acto => {
                 const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
-                const numTramiteStr = acto.numero || '-';
-
-                let intervinientes = [...acto.intervinientes].sort((a, b) => {
-                    if (a.tipo === 'Otorgante' && b.tipo === 'Beneficiario') return -1;
-                    if (a.tipo === 'Beneficiario' && b.tipo === 'Otorgante') return 1;
-                    return 0;
-                });
+                let intervinientes = [...acto.intervinientes].sort((a, b) => (a.tipo==='Otorgante'&&b.tipo==='Beneficiario'?-1:a.tipo==='Beneficiario'&&b.tipo==='Otorgante'?1:0));
 
                 if (intervinientes.length === 0) {
-                    html += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${seqStr}</td>
-                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${numTramiteStr}</td>
-                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${acto.categoria}</td>
-                            <td class="border border-gray-200 p-2 text-gray-800 align-top">${acto.fecha}</td>
-                            <td class="border border-gray-200 p-2 text-gray-400 italic text-center" colspan="4">Sin intervinientes registrados</td>
-                        </tr>
-                    `;
+                    html += `<tr class="hover:bg-gray-50"><td class="border border-gray-200 p-2">${seqStr}</td><td class="border border-gray-200 p-2">${acto.numero||'-'}</td><td class="border border-gray-200 p-2">${acto.categoria}</td><td class="border border-gray-200 p-2">${acto.fecha}</td><td class="border border-gray-200 p-2 text-gray-400 italic text-center" colspan="4">Sin intervinientes</td></tr>`;
                 } else {
                     const rowSpan = intervinientes.length;
-                    html += `<tr class="hover:bg-gray-50">
-                        <td class="border border-gray-200 p-2 text-gray-800 align-top font-semibold" rowspan="${rowSpan}">${seqStr}</td>
-                        <td class="border border-gray-200 p-2 text-gray-800 align-top" rowspan="${rowSpan}">${numTramiteStr}</td>
-                        <td class="border border-gray-200 p-2 text-gray-800 align-top" rowspan="${rowSpan}">${acto.categoria}</td>
-                        <td class="border border-gray-200 p-2 text-gray-800 align-top" rowspan="${rowSpan}">${acto.fecha}</td>
-                    `;
-
+                    html += `<tr class="hover:bg-gray-50"><td class="border border-gray-200 p-2 font-semibold" rowspan="${rowSpan}">${seqStr}</td><td class="border border-gray-200 p-2" rowspan="${rowSpan}">${acto.numero||'-'}</td><td class="border border-gray-200 p-2" rowspan="${rowSpan}">${acto.categoria}</td><td class="border border-gray-200 p-2" rowspan="${rowSpan}">${acto.fecha}</td>`;
                     intervinientes.forEach((int, index) => {
                         if (index > 0) html += `<tr class="hover:bg-gray-50">`;
-                        
-                        html += `
-                            <td class="border border-gray-200 p-2 text-gray-800">${int.nombre}</td>
-                            <td class="border border-gray-200 p-2 text-gray-800 font-semibold text-xs uppercase">${int.tipo}</td>
-                            <td class="border border-gray-200 p-2 text-gray-800 font-mono text-xs">${int.identificacion}</td>
-                            <td class="border border-gray-200 p-2 text-gray-800">${int.nacionalidad}</td>
-                        </tr>`;
+                        html += `<td class="border border-gray-200 p-2">${int.nombre}</td><td class="border border-gray-200 p-2 text-xs uppercase">${int.tipo}</td><td class="border border-gray-200 p-2 font-mono text-xs">${int.identificacion}</td><td class="border border-gray-200 p-2">${int.nacionalidad}</td></tr>`;
                     });
                 }
             });
-
             html += `</tbody></table></div>`;
             container.innerHTML = html;
         }
 
-        // --- MÓDULO DE USUARIOS Y NOTARÍAS (CRUD CON FIREBASE) ---
-        function getUsuariosHTML() {
+        //        function getUsuariosHTML() {
             if (state.currentUser.role === 3) return `<p class="text-red-500">Acceso denegado.</p>`;
             
             const esSuperAdmin = state.currentUser.role === 1;
-
             let tabsHtml = '';
+            
             if (esSuperAdmin) {
                 tabsHtml = `
                     <div class="border-b border-gray-200 mb-6">
                         <nav class="-mb-px flex space-x-8">
-                            <button onclick="switchAdminTab('usuarios')" class="${state.adminTabActiva === 'usuarios' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors">
+                            <button onclick="switchAdminTab('usuarios')" class="${state.adminTabActiva === 'usuarios' ? 'border-[#1e3a8a] text-[#1e3a8a]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors">
                                 <i class="fas fa-users mr-2"></i> Usuarios del Sistema
                             </button>
-                            <button onclick="switchAdminTab('notarias')" class="${state.adminTabActiva === 'notarias' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors">
+                            <button onclick="switchAdminTab('notarias')" class="${state.adminTabActiva === 'notarias' ? 'border-[#1e3a8a] text-[#1e3a8a]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors">
                                 <i class="fas fa-building mr-2"></i> Gestión de Notarías (Tenants)
                             </button>
                         </nav>
@@ -1113,31 +1225,28 @@
                 mainContentHtml = `
                     <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
                         <div>
-                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-users-cog text-purple-600 mr-2"></i> Gestión de Personal</h2>
+                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-users-cog text-purple-600 mr-2"></i> Gestión de Usuarios</h2>
                             <p class="text-sm text-gray-500">Administración de credenciales y roles del sistema.</p>
                         </div>
                         <button onclick="openNuevoUsuarioModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors">
                             <i class="fas fa-user-plus"></i> Nuevo Usuario
                         </button>
                     </div>
-
                     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse min-w-[600px]">
-                                <thead>
-                                    <tr class="bg-gray-50 text-gray-600 text-sm border-b">
-                                        <th class="p-4 font-semibold w-24">Acciones</th>
-                                        <th class="p-4 font-semibold">Nombre</th>
-                                        <th class="p-4 font-semibold">Usuario (Login)</th>
-                                        <th class="p-4 font-semibold">Rol</th>
-                                        <th class="p-4 font-semibold">Notaría Asignada</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100">
-                                    ${generarTablaUsuarios()}
-                                </tbody>
-                            </table>
-                        </div>
+                        <table class="w-full text-left border-collapse min-w-[600px]">
+                            <thead class="bg-gray-50 text-gray-600 text-sm border-b">
+                                <tr>
+                                    <th class="p-4 font-semibold w-24">Acciones</th>
+                                    <th class="p-4 font-semibold">Nombre</th>
+                                    <th class="p-4 font-semibold">Usuario (Login)</th>
+                                    <th class="p-4 font-semibold">Rol</th>
+                                    <th class="p-4 font-semibold">Notaría Asignada</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${generarTablaUsuarios()}
+                            </tbody>
+                        </table>
                     </div>
                 `;
             } else if (state.adminTabActiva === 'notarias' && esSuperAdmin) {
@@ -1145,25 +1254,19 @@
                     <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
                         <div>
                             <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-building text-blue-600 mr-2"></i> Gestión de Notarías</h2>
-                            <p class="text-sm text-gray-500">Creación y administración de entidades notariales independientes (Tenants).</p>
+                            <p class="text-sm text-gray-500">Creación de entidades notariales. Cree la notaría aquí antes de asignar usuarios.</p>
                         </div>
                         <button onclick="openNuevaNotariaModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors">
                             <i class="fas fa-plus"></i> Registrar Notaría
                         </button>
                     </div>
-
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         ${generarCardsNotarias()}
                     </div>
                 `;
             }
 
-            return `
-                <div class="h-full">
-                    ${tabsHtml}
-                    ${mainContentHtml}
-                </div>
-            `;
+            return `<div class="h-full">${tabsHtml}${mainContentHtml}</div>`;
         }
 
         function switchAdminTab(tab) {
@@ -1171,561 +1274,173 @@
             renderCurrentView();
         }
 
-        // --- SUB-MÓDULO: NOTARÍAS ---
+        // Submódulo Notarías
         function generarCardsNotarias() {
-            if (LOCAL_DB.notarias.length === 0) {
-                return `<div class="col-span-full p-8 text-center text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">No hay notarías registradas en el sistema.</div>`;
-            }
+            if (LOCAL_DB.notarias.length === 0) return `<div class="col-span-full p-8 text-center text-gray-500">No hay notarías registradas.</div>`;
             return LOCAL_DB.notarias.map(n => {
                 const numUsuarios = LOCAL_DB.users.filter(u => u.notariaId === n.id).length;
-                const numActos = LOCAL_DB.actos.filter(a => a.notariaId === n.id).length;
                 return `
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
-                        <div class="bg-gray-50 px-5 py-4 border-b border-gray-200 flex justify-between items-center">
-                            <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-landmark text-gray-400"></i> ${n.nombre}</h3>
-                            <button onclick="eliminarNotaria('${n.id}')" class="text-red-400 hover:text-red-600 transition-colors" title="Eliminar Notaría"><i class="fas fa-trash-alt"></i></button>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
+                        <div class="bg-gray-50 px-5 py-4 border-b flex justify-between">
+                            <h3 class="font-bold text-gray-800"><i class="fas fa-landmark text-gray-400"></i> ${n.nombre}</h3>
+                            <button onclick="eliminarNotaria('${n.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash-alt"></i></button>
                         </div>
-                        <div class="p-5 flex-1 flex flex-col justify-center gap-4">
-                            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                <span class="text-sm font-medium text-gray-600"><i class="fas fa-users text-blue-500 mr-2"></i> Usuarios Activos:</span>
-                                <span class="text-lg font-bold text-gray-900">${numUsuarios}</span>
-                            </div>
-                            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                <span class="text-sm font-medium text-gray-600"><i class="fas fa-file-signature text-green-500 mr-2"></i> Actos Registrados:</span>
-                                <span class="text-lg font-bold text-gray-900">${numActos}</span>
+                        <div class="p-5 flex-1 flex flex-col justify-center">
+                            <div class="flex justify-between bg-gray-50 p-3 rounded-lg border">
+                                <span class="text-sm text-gray-600">Usuarios Asignados:</span>
+                                <span class="font-bold">${numUsuarios}</span>
                             </div>
                         </div>
-                        <div class="px-5 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-400 text-center font-mono">
-                            ID: ${n.id}
-                        </div>
-                    </div>
-                `;
+                    </div>`;
             }).join('');
         }
 
         function openNuevaNotariaModal() {
             const html = `
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800">Registrar Nueva Notaría</h3>
-                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between">
+                        <h3 class="font-bold text-gray-800">Registrar Notaría</h3>
+                        <button onclick="closeModal()" class="text-gray-400"><i class="fas fa-times"></i></button>
                     </div>
                     <form onsubmit="guardarNuevaNotaria(event)" class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Oficial de la Notaría</label>
-                            <input type="text" id="nueva_not_nombre" placeholder="Ej: Notaría 11 del Cantón Quito" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm focus:ring-primary focus:border-primary">
-                        </div>
-                        <div class="bg-blue-50 text-blue-800 text-xs p-3 rounded-lg flex gap-2">
-                            <i class="fas fa-info-circle mt-0.5"></i>
-                            <p>Una vez creada la Notaría, podrá asignar Oficiales y Matrizadores a ella desde la pestaña de Usuarios.</p>
-                        </div>
-                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-blue-600 rounded-lg text-white hover:bg-blue-700 transition-colors font-medium">Crear Entidad</button>
-                        </div>
+                        <input type="text" id="nueva_not_nombre" placeholder="Nombre de la Notaría" required class="block w-full border rounded-lg px-3 py-2 text-sm">
+                        <div class="flex justify-end gap-3 pt-4 border-t"><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Crear</button></div>
                     </form>
-                </div>
-            `;
+                </div>`;
             showModal(html);
         }
 
         async function guardarNuevaNotaria(e) {
             e.preventDefault();
             const nombre = document.getElementById('nueva_not_nombre').value.trim();
-            if(!nombre) return;
-
-            Swal.fire({ title: 'Creando Entidad...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-            
+            Swal.fire({ title: 'Creando...', didOpen: () => Swal.showLoading() });
             try {
-                const notariaRef = await db.collection('notarias').add({ nombre: nombre });
-                LOCAL_DB.notarias.push({ id: notariaRef.id, nombre: nombre });
-                closeModal();
-                Swal.fire({ icon: 'success', title: 'Notaría Registrada', timer: 1500, showConfirmButton: false });
-                renderCurrentView();
-            } catch (error) {
-                Swal.fire('Error', 'No se pudo crear la notaría.', 'error');
-            }
+                const ref = await db.collection('notarias').add({ nombre });
+                LOCAL_DB.notarias.push({ id: ref.id, nombre });
+                closeModal(); Swal.fire('Éxito', 'Notaría creada.', 'success'); renderCurrentView();
+            } catch (err) { Swal.fire('Error', 'No se pudo crear.', 'error'); }
         }
 
-        function eliminarNotaria(notariaId) {
-            const numUsuarios = LOCAL_DB.users.filter(u => u.notariaId === notariaId).length;
-            const numActos = LOCAL_DB.actos.filter(a => a.notariaId === notariaId).length;
-
-            if (numUsuarios > 0 || numActos > 0) {
-                Swal.fire('Acción Bloqueada', `No puede eliminar esta Notaría porque tiene <b>${numUsuarios} usuarios</b> y <b>${numActos} actos</b> asignados. Elimine o reasigne estos registros primero.`, 'warning');
-                return;
-            }
-
-            Swal.fire({
-                title: '¿Eliminar Notaría?',
-                text: "Esta entidad será borrada permanentemente.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, eliminar',
-                cancelButtonText: 'Cancelar'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-                    try {
-                        await db.collection('notarias').doc(notariaId).delete();
-                        LOCAL_DB.notarias = LOCAL_DB.notarias.filter(n => n.id !== notariaId);
-                        renderCurrentView();
-                        Swal.fire('Eliminada', 'La notaría fue eliminada.', 'success');
-                    } catch (error) {
-                        Swal.fire('Error', 'No se pudo eliminar de la base de datos.', 'error');
-                    }
+        function eliminarNotaria(id) {
+            if (LOCAL_DB.users.some(u => u.notariaId === id)) return Swal.fire('Bloqueado', 'Esta notaría tiene usuarios asignados. Bórrelos primero.', 'warning');
+            Swal.fire({ title: '¿Eliminar?', showCancelButton: true }).then(async r => {
+                if(r.isConfirmed){
+                    await db.collection('notarias').doc(id).delete();
+                    LOCAL_DB.notarias = LOCAL_DB.notarias.filter(n => n.id !== id);
+                    renderCurrentView();
                 }
             });
         }
 
-        // --- SUB-MÓDULO: USUARIOS ---
+        // Submódulo Usuarios
         function generarTablaUsuarios() {
             let usuariosMostrar = LOCAL_DB.users;
-            
-            if (state.currentUser.role === 2) {
-                usuariosMostrar = usuariosMostrar.filter(u => u.notariaId === state.currentUser.notariaId && u.role === 3);
-            }
-
+            if (state.currentUser.role === 2) usuariosMostrar = usuariosMostrar.filter(u => u.notariaId === state.currentUser.notariaId && u.role === 3);
             return usuariosMostrar.map(u => {
                 const roleLabels = {1: 'SuperAdmin', 2: 'Oficial (Admin Notaría)', 3: 'Matrizador'};
                 const roleColors = {1: 'bg-red-100 text-red-800', 2: 'bg-blue-100 text-blue-800', 3: 'bg-gray-100 text-gray-800'};
                 const notariaStr = u.notariaId ? LOCAL_DB.notarias.find(n => n.id === u.notariaId)?.nombre : '<span class="text-xs text-gray-400 italic">Acceso Global</span>';
-                
-                const deleteBtn = u.id !== state.currentUser.id 
-                    ? `<button onclick="eliminarUsuario('${u.id}')" class="text-red-500 hover:text-red-700 transition-colors p-1" title="Eliminar Usuario"><i class="fas fa-trash-alt"></i></button>` 
-                    : '';
-                const editBtn = `<button onclick="openEditUsuarioModal('${u.id}')" class="text-amber-500 hover:text-amber-700 transition-colors p-1 mr-2" title="Editar Usuario / Contraseña"><i class="fas fa-edit"></i></button>`;
-
-                return `
-                    <tr class="hover:bg-gray-50">
-                        <td class="p-4 text-center whitespace-nowrap">
-                            ${editBtn}
-                            ${deleteBtn}
-                        </td>
-                        <td class="p-4 font-medium text-gray-800">${u.nombre}</td>
-                        <td class="p-4 text-gray-600">${u.username}</td>
-                        <td class="p-4">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${roleColors[u.role]}">
-                                ${roleLabels[u.role]}
-                            </span>
-                        </td>
-                        <td class="p-4 text-sm text-gray-600">${notariaStr}</td>
-                    </tr>
-                `;
+                const deleteBtn = u.id !== state.currentUser.id ? `<button onclick="eliminarUsuario('${u.id}')" class="text-red-500 p-1"><i class="fas fa-trash-alt"></i></button>` : '';
+                const editBtn = `<button onclick="openEditUsuarioModal('${u.id}')" class="text-amber-500 p-1 mr-2"><i class="fas fa-edit"></i></button>`;
+                return `<tr class="hover:bg-gray-50"><td class="p-4 text-center">${editBtn}${deleteBtn}</td><td class="p-4 font-medium">${u.nombre}</td><td class="p-4">${u.username}</td><td class="p-4"><span class="px-2 py-0.5 rounded text-xs ${roleColors[u.role]}">${roleLabels[u.role]}</span></td><td class="p-4 text-sm">${notariaStr}</td></tr>`;
             }).join('');
         }
 
         function openNuevoUsuarioModal() {
-            let roleOptions = '';
-            if (state.currentUser.role === 1) {
-                roleOptions = `<option value="1">Super Administrador</option><option value="2" selected>Oficial de Cumplimiento</option><option value="3">Matrizador</option>`;
-            } else if (state.currentUser.role === 2) {
-                roleOptions = `<option value="3">Matrizador</option>`;
-            }
-
-            let notariaOptions = '';
-            if (state.currentUser.role === 1) {
-                if (LOCAL_DB.notarias.length === 0) {
-                    Swal.fire('Atención', 'Aún no existen Notarías creadas. Por favor, ve a la pestaña "Gestión de Notarías" y crea una primero.', 'info');
-                    return;
-                }
-                notariaOptions = `<option value="" disabled selected>-- Seleccione una Notaría --</option>`;
-                notariaOptions += LOCAL_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('');
-            } else {
-                const miNotaria = LOCAL_DB.notarias.find(n => n.id === state.currentUser.notariaId);
-                notariaOptions = `<option value="${miNotaria.id}">${miNotaria.nombre}</option>`;
-            }
+            let roleOptions = state.currentUser.role === 1 ? `<option value="1">Super Administrador</option><option value="2">Oficial de Cumplimiento</option><option value="3">Matrizador</option>` : `<option value="3">Matrizador</option>`;
+            let notariaOptions = state.currentUser.role === 1 
+                ? `<option value="">-- Ninguna (Acceso Global) --</option>` + LOCAL_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('')
+                : `<option value="${state.currentUser.notariaId}">${LOCAL_DB.notarias.find(n=>n.id===state.currentUser.notariaId).nombre}</option>`;
 
             const html = `
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800">Registrar Nuevo Usuario</h3>
-                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-                    </div>
+                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between"><h3 class="font-bold text-gray-800">Nuevo Usuario</h3><button onclick="closeModal()"><i class="fas fa-times text-gray-400"></i></button></div>
                     <form onsubmit="guardarNuevoUsuario(event)" class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                            <input type="text" id="usr_nombre" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm focus:ring-primary focus:border-primary">
-                        </div>
+                        <input type="text" id="usr_nombre" placeholder="Nombre Completo" required class="w-full border rounded px-3 py-2 text-sm">
                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Usuario (Login)</label>
-                                <input type="text" id="usr_username" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm focus:ring-primary focus:border-primary">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                                <input type="password" id="usr_password" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm focus:ring-primary focus:border-primary">
-                            </div>
+                            <input type="text" id="usr_username" placeholder="Usuario (Login)" required class="w-full border rounded px-3 py-2 text-sm">
+                            <input type="password" id="usr_password" placeholder="Contraseña" required class="w-full border rounded px-3 py-2 text-sm">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Rol en el Sistema</label>
-                            <select id="usr_rol" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm bg-white focus:ring-primary focus:border-primary" onchange="toggleNotariaFields()">
-                                ${roleOptions}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Notaría Asignada</label>
-                            <select id="usr_notaria" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm bg-white focus:ring-primary focus:border-primary">
-                                ${notariaOptions}
-                            </select>
-                        </div>
-                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-purple-600 rounded-lg text-white hover:bg-purple-700 transition-colors font-medium">Crear Usuario</button>
-                        </div>
+                        <select id="usr_rol" required class="w-full border rounded px-3 py-2 text-sm" onchange="document.getElementById('usr_notaria').disabled=(this.value==='1')">
+                            ${roleOptions}
+                        </select>
+                        <select id="usr_notaria" required class="w-full border rounded px-3 py-2 text-sm">
+                            ${notariaOptions}
+                        </select>
+                        <div class="flex justify-end gap-3 pt-4 border-t"><button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded text-sm">Crear</button></div>
                     </form>
-                </div>
-            `;
+                </div>`;
             showModal(html);
-            
-            window.toggleNotariaFields = function() {
-                const rolSelect = document.getElementById('usr_rol');
-                const notariaSelect = document.getElementById('usr_notaria');
-                if(rolSelect && rolSelect.value === "1") {
-                    notariaSelect.value = ""; 
-                    notariaSelect.disabled = true;
-                    notariaSelect.required = false;
-                } else {
-                    notariaSelect.disabled = false;
-                    notariaSelect.required = true;
-                }
-            };
-            window.toggleNotariaFields();
         }
 
         async function guardarNuevoUsuario(e) {
             e.preventDefault();
-            Swal.fire({ title: 'Creando cuenta en la nube...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-
-            const nombre = document.getElementById('usr_nombre').value;
             const username = document.getElementById('usr_username').value;
-            const password = document.getElementById('usr_password').value;
-            const rol = parseInt(document.getElementById('usr_rol').value);
-            let notariaId = document.getElementById('usr_notaria').value;
+            if(LOCAL_DB.users.some(u => u.username === username)) return Swal.fire('Error', 'El usuario ya existe.', 'error');
 
-            if(LOCAL_DB.users.some(u => u.username === username)) {
-                Swal.fire('Error', 'El nombre de usuario ya está en uso.', 'error');
-                return;
-            }
-
-            if (rol === 1) notariaId = null;
-
+            const data = {
+                nombre: document.getElementById('usr_nombre').value,
+                username: username,
+                password: document.getElementById('usr_password').value,
+                role: parseInt(document.getElementById('usr_rol').value),
+                notariaId: document.getElementById('usr_rol').value === "1" ? null : document.getElementById('usr_notaria').value
+            };
+            
+            Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading() });
             try {
-                const nuevoUsuario = { nombre: nombre, username: username, password: password, role: rol, notariaId: notariaId };
-                const docRef = await db.collection('users').add(nuevoUsuario);
-                nuevoUsuario.id = docRef.id;
-                
-                LOCAL_DB.users.push(nuevoUsuario);
-
-                closeModal();
-                Swal.fire({ icon: 'success', title: '¡Usuario Creado!', text: 'El usuario ha sido registrado exitosamente.', confirmButtonColor: '#9333ea' });
-                if (state.currentView === 'usuarios') renderCurrentView();
-
-            } catch (error) {
-                Swal.fire('Error', 'No se pudo crear el usuario en la nube.', 'error');
-            }
+                const ref = await db.collection('users').add(data);
+                LOCAL_DB.users.push({ id: ref.id, ...data });
+                closeModal(); Swal.fire('Éxito', 'Usuario creado.', 'success'); renderCurrentView();
+            } catch (err) { Swal.fire('Error', 'No se pudo crear.', 'error'); }
         }
 
         function openEditUsuarioModal(userId) {
-            const userToEdit = LOCAL_DB.users.find(u => u.id === userId);
-            if (!userToEdit) return;
-
+            const u = LOCAL_DB.users.find(x => x.id === userId);
+            if (!u) return;
             const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 class="text-lg font-bold text-gray-800">Editar Usuario / Contraseña</h3>
-                        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-                    </div>
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden fade-in">
+                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between"><h3 class="font-bold">Editar Usuario</h3><button onclick="closeModal()"><i class="fas fa-times text-gray-400"></i></button></div>
                     <form onsubmit="guardarEdicionUsuario(event, '${userId}')" class="p-6 space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                            <input type="text" id="edit_usr_nombre" value="${userToEdit.nombre}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm focus:ring-primary focus:border-primary">
-                        </div>
+                        <input type="text" id="edit_usr_nombre" value="${u.nombre}" required class="w-full border rounded px-3 py-2 text-sm">
                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Usuario (Login)</label>
-                                <input type="text" id="edit_usr_username" value="${userToEdit.username}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm focus:ring-primary focus:border-primary">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
-                                <input type="password" id="edit_usr_password" placeholder="Dejar en blanco para no cambiar" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm placeholder:text-xs focus:ring-primary focus:border-primary">
-                            </div>
+                            <input type="text" id="edit_usr_username" value="${u.username}" required class="w-full border rounded px-3 py-2 text-sm">
+                            <input type="password" id="edit_usr_password" placeholder="Nueva Clave (opcional)" class="w-full border rounded px-3 py-2 text-sm">
                         </div>
-                        <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-amber-500 rounded-lg text-white hover:bg-amber-600 transition-colors font-medium">Actualizar en la Nube</button>
-                        </div>
+                        <div class="flex justify-end pt-4 border-t"><button type="submit" class="px-4 py-2 bg-amber-500 text-white rounded text-sm">Actualizar</button></div>
                     </form>
-                </div>
-            `;
+                </div>`;
             showModal(html);
         }
 
         async function guardarEdicionUsuario(e, userId) {
             e.preventDefault();
-            const userIndex = LOCAL_DB.users.findIndex(u => u.id === userId);
-            if (userIndex === -1) return;
+            const uIdx = LOCAL_DB.users.findIndex(x => x.id === userId);
+            const username = document.getElementById('edit_usr_username').value;
+            if(LOCAL_DB.users.some(x => x.username === username && x.id !== userId)) return Swal.fire('Error', 'Usuario en uso.', 'error');
 
-            const newNombre = document.getElementById('edit_usr_nombre').value;
-            const newUsername = document.getElementById('edit_usr_username').value;
-            const newPassword = document.getElementById('edit_usr_password').value;
+            const upd = { nombre: document.getElementById('edit_usr_nombre').value, username };
+            const p = document.getElementById('edit_usr_password').value;
+            if(p.trim() !== '') upd.password = p;
 
-            if(LOCAL_DB.users.some(u => u.username === newUsername && u.id !== userId)) {
-                Swal.fire('Error', 'El nombre de usuario ya está en uso por otra persona.', 'error');
-                return;
-            }
-
-            Swal.fire({ title: 'Actualizando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-
-            const updateData = { nombre: newNombre, username: newUsername };
-            if (newPassword.trim() !== '') { updateData.password = newPassword; }
-
+            Swal.fire({ title: 'Actualizando...', didOpen: () => Swal.showLoading() });
             try {
-                await db.collection('users').doc(userId).update(updateData);
-                LOCAL_DB.users[userIndex] = { ...LOCAL_DB.users[userIndex], ...updateData };
-                
-                closeModal();
-                Swal.fire({ icon: 'success', title: 'Usuario Actualizado', text: 'Los datos se guardaron en la nube correctamente.', timer: 2000, showConfirmButton: false });
-                if (state.currentView === 'usuarios') renderCurrentView();
-            } catch (error) {
-                Swal.fire('Error', 'No se pudo actualizar el registro en la nube.', 'error');
-            }
+                await db.collection('users').doc(userId).update(upd);
+                LOCAL_DB.users[uIdx] = { ...LOCAL_DB.users[uIdx], ...upd };
+                closeModal(); Swal.fire('Éxito', 'Usuario actualizado.', 'success'); renderCurrentView();
+            } catch (err) { Swal.fire('Error', 'No se pudo actualizar.', 'error'); }
         }
 
-        function eliminarUsuario(userId) {
-            Swal.fire({
-                title: '¿Eliminar Usuario?',
-                text: "El usuario perderá el acceso permanentemente.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, eliminar',
-                cancelButtonText: 'Cancelar'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-                    try {
-                        await db.collection('users').doc(userId).delete();
-                        LOCAL_DB.users = LOCAL_DB.users.filter(u => u.id !== userId);
-                        if (state.currentView === 'usuarios') renderCurrentView();
-                        Swal.fire('Eliminado', 'El usuario fue eliminado de la base de datos.', 'success');
-                    } catch (error) {
-                        Swal.fire('Error', 'No se pudo eliminar el usuario de la nube.', 'error');
-                    }
+        function eliminarUsuario(id) {
+            Swal.fire({ title: '¿Eliminar Usuario?', icon: 'warning', showCancelButton: true }).then(async r => {
+                if(r.isConfirmed) {
+                    await db.collection('users').doc(id).delete();
+                    LOCAL_DB.users = LOCAL_DB.users.filter(x => x.id !== id);
+                    renderCurrentView();
                 }
             });
         }
 
-        // --- MÓDULO DE CONSULTA MULTI-FUENTE (Judicial, SRI, Registro Civil, etc.) ---
-        function getHistorialCedulas() {
-            return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
-        }
-
-        function guardarCedulaEnHistorial(cedula) {
-            let historial = getHistorialCedulas().filter(c => c !== cedula);
-            historial.unshift(cedula);
-            historial = historial.slice(0, 8);
-            localStorage.setItem('historialCedulasJudicial', JSON.stringify(historial));
-            return historial;
-        }
-
-        function getConsultasHTML() {
-            const fuentes = LOCAL_DB.fuentesConsulta;
-            const esSuperAdmin = state.currentUser.role === 1;
-
-            if (!state.consultaTabActivaId && fuentes.length > 0) {
-                state.consultaTabActivaId = fuentes[0].id;
-            }
-
-            const tabsHtml = fuentes.map(f => `
-                <div class="flex items-center gap-1 flex-shrink-0">
-                    <button onclick="seleccionarFuenteConsulta('${f.id}')"
-                        class="px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${state.consultaTabActivaId === f.id ? 'dyn-border-primary dyn-text-primary bg-white' : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-100'}"
-                        title="${f.url}">
-                        ${f.nombre}
-                    </button>
-                    ${esSuperAdmin ? `
-                    <button onclick="eliminarFuenteConsulta('${f.id}')" class="text-gray-400 hover:text-red-600 transition-colors px-1" title="Eliminar página">
-                        <i class="fas fa-times text-xs"></i>
-                    </button>
-                    ` : ''}
-                </div>
-            `).join('');
-
-            return `
-                <div class="h-full flex flex-col space-y-4">
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1"><i class="fas fa-gavel dyn-text-primary mr-2"></i> Consultas Externas (Due Diligence)</h2>
-                        <p class="text-sm text-gray-500 mb-4">Ingresa la cédula/RUC, cópiala y navega entre las pestañas para buscar en cada fuente gubernamental.</p>
-                        <div class="flex flex-wrap items-end gap-3">
-                            <div class="flex-1 min-w-[220px]">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula / RUC</label>
-                                <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
-                                    class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm shadow-sm">
-                            </div>
-                            <button type="button" onclick="copiarCedulaActual()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2 h-[38px] shadow-sm">
-                                <i class="fas fa-copy"></i> Copiar
-                            </button>
-                            ${esSuperAdmin ? `
-                            <button type="button" onclick="mostrarFormAgregarFuente()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2 h-[38px] shadow-sm">
-                                <i class="fas fa-plus"></i> Agregar página
-                            </button>
-                            ` : ''}
-                        </div>
-                        <div id="consulta_historial_lista" class="flex flex-wrap gap-2 mt-3"></div>
-                        <div id="fuente-form-nueva" class="hidden mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                            <input type="text" id="nueva_fuente_nombre" placeholder="Nombre (Ej: SRI - Consulta RUC)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
-                            <input type="text" id="nueva_fuente_url" placeholder="URL completa (https://...)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
-                            <div class="flex justify-end gap-2">
-                                <button type="button" onclick="document.getElementById('fuente-form-nueva').classList.add('hidden')" class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-200 rounded">Cancelar</button>
-                                <button type="button" onclick="agregarFuenteConsulta()" class="px-3 py-1.5 text-sm text-white rounded-lg dyn-bg-primary hover:opacity-90">Guardar página</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden min-h-0">
-                        ${fuentes.length === 0
-                            ? `<div class="flex-1 flex items-center justify-center text-gray-400 text-sm">No hay páginas configuradas todavía.</div>`
-                            : `
-                            <div class="flex gap-1 px-2 pt-2 border-b border-gray-200 overflow-x-auto flex-shrink-0">${tabsHtml}</div>
-                            <div id="consulta_visor_container" class="flex-1 min-h-0 relative"></div>
-                            `
-                        }
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderConsultasViewer() {
-            const historial = getHistorialCedulas();
-            const historialContainer = document.getElementById('consulta_historial_lista');
-            if (historialContainer) {
-                historialContainer.innerHTML = historial.length === 0 ? '' : historial.map(c => `
-                    <button type="button" onclick="document.getElementById('consulta_cedula_input').value='${c}'" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors border border-gray-200">
-                        ${c}
-                    </button>
-                `).join('');
-            }
-
-            const visorContainer = document.getElementById('consulta_visor_container');
-            if (!visorContainer) return;
-
-            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === state.consultaTabActivaId);
-            if (!fuente) {
-                visorContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">Selecciona una página.</div>`;
-                return;
-            }
-
-            visorContainer.innerHTML = `
-                <iframe src="${fuente.url}" class="absolute inset-0 w-full h-full border-0 bg-gray-50" id="consulta_iframe"></iframe>
-                <div class="absolute bottom-3 right-3 bg-white shadow-lg border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-gray-600">
-                    <span>¿No carga? Algunos sitios bloquean mostrarse embebidos.</span>
-                    <button onclick="abrirFuenteEnVentana('${fuente.id}')" class="px-2.5 py-1.5 dyn-bg-primary text-white rounded-md font-medium whitespace-nowrap hover:opacity-90 shadow-sm">Abrir aparte</button>
-                </div>
-            `;
-        }
-
-        function seleccionarFuenteConsulta(id) {
-            state.consultaTabActivaId = id;
-            if (state.currentView === 'consultas') {
-                const content = document.getElementById('main-content');
-                content.innerHTML = getConsultasHTML();
-                renderConsultasViewer();
-            }
-        }
-
-        function abrirFuenteEnVentana(id) {
-            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === id);
-            if (!fuente) return;
-            const w = 1000, h = 800;
-            const left = (screen.width / 2) - (w / 2);
-            const top = (screen.height / 2) - (h / 2);
-            const ventana = window.open(
-                fuente.url,
-                'consultaExterna_' + fuente.id,
-                `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`
-            );
-            if (ventana) ventana.focus();
-        }
-
-        async function copiarCedulaActual() {
-            const input = document.getElementById('consulta_cedula_input');
-            const cedula = input.value.trim();
-            if (!cedula) {
-                Swal.fire('Falta la cédula', 'Ingresa un número de cédula antes de continuar.', 'warning');
-                return;
-            }
-            try {
-                await navigator.clipboard.writeText(cedula);
-            } catch (error) {
-                console.warn('No se pudo copiar automáticamente al portapapeles:', error);
-            }
-            guardarCedulaEnHistorial(cedula);
-            renderConsultasViewer();
-            Swal.fire({ icon: 'success', title: 'Cédula copiada', text: 'Pégala (Ctrl+V) en la página activa y busca.', timer: 2000, showConfirmButton: false });
-        }
-
-        function mostrarFormAgregarFuente() {
-            document.getElementById('fuente-form-nueva').classList.remove('hidden');
-        }
-
-        async function agregarFuenteConsulta() {
-            if (state.currentUser.role !== 1) return;
-            const nombre = document.getElementById('nueva_fuente_nombre').value.trim();
-            const url = document.getElementById('nueva_fuente_url').value.trim();
-            if (!nombre || !/^https?:\/\/.+/.test(url)) {
-                Swal.fire('Datos incompletos', 'Ingresa un nombre y una URL válida (debe iniciar con http:// o https://).', 'warning');
-                return;
-            }
-            try {
-                Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-                const fuenteData = { nombre, url };
-                const docRef = await db.collection('fuentesConsulta').add(fuenteData);
-                LOCAL_DB.fuentesConsulta.push({ id: docRef.id, ...fuenteData });
-                state.consultaTabActivaId = docRef.id;
-                document.getElementById('main-content').innerHTML = getConsultasHTML();
-                renderConsultasViewer();
-                Swal.close();
-            } catch (error) {
-                Swal.fire('Error', 'No se pudo guardar la página en la nube.', 'error');
-            }
-        }
-
-        async function eliminarFuenteConsulta(id) {
-            if (state.currentUser.role !== 1) return;
-            Swal.fire({
-                title: '¿Eliminar Pestaña?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, eliminar',
-                cancelButtonText: 'Cancelar'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    try {
-                        Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-                        await db.collection('fuentesConsulta').doc(id).delete();
-                        LOCAL_DB.fuentesConsulta = LOCAL_DB.fuentesConsulta.filter(f => f.id !== id);
-                        if (state.consultaTabActivaId === id) {
-                            state.consultaTabActivaId = LOCAL_DB.fuentesConsulta.length > 0 ? LOCAL_DB.fuentesConsulta[0].id : null;
-                        }
-                        document.getElementById('main-content').innerHTML = getConsultasHTML();
-                        renderConsultasViewer();
-                        Swal.close();
-                    } catch (error) {
-                        Swal.fire('Error', 'No se pudo eliminar la página.', 'error');
-                    }
-                }
-            });
-        }
-
-
-        // --- MÓDULO RIESGOS ---
-        function getRiesgosHTML() {
+        //        function getRiesgosHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
@@ -1735,29 +1450,23 @@
                     </select>
                 `;
             }
-
             return `
                 <div class="space-y-6">
                     <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between sm:items-center">
-                        <div>
-                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-shield-alt text-red-600 mr-2"></i> Análisis de Riesgos de Lavado de Activos</h2>
-                            <p class="text-sm text-gray-500 mt-1">Módulo para identificar operaciones inusuales o injustificadas según normativa UAFE.</p>
-                        </div>
+                        <div><h2 class="text-xl font-bold text-gray-800"><i class="fas fa-shield-alt text-red-600 mr-2"></i> Análisis de Riesgos</h2></div>
                         ${notariaSelector}
                     </div>
                     <div class="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
                         <i class="fas fa-cogs text-5xl text-gray-300 mb-4"></i>
                         <h3 class="text-lg font-medium text-gray-700">Módulo en Construcción</h3>
-                        <p class="text-sm text-gray-500 mt-2 max-w-md mx-auto">Aquí se integrarán las reglas de negocio para alertar sobre cuantías inusuales y generar los reportes a las entidades de control (UAFE).</p>
                     </div>
                 </div>
             `;
         }
 
-        // --- NAVEGACIÓN Y UTILIDADES ---
-        function navigate(view) {
+        //        function navigate(view) {
             state.currentView = view;
-            localStorage.setItem('notaryLastView', view); // Guardar la vista actual
+            localStorage.setItem('notaryLastView', view);
             renderCurrentView();
         }
 
@@ -1787,39 +1496,39 @@
                 state.currentUser = foundUser;
                 state.currentView = 'dashboard';
                 
-                // Guardar sesión en LocalStorage
+                // Guardar sesión y activar timer
                 localStorage.setItem('notarySession', JSON.stringify({ user: foundUser }));
                 localStorage.setItem('notaryLastView', 'dashboard');
+                resetInactivityTimer();
                 
-                resetInactivityTimer(); // Iniciar conteo regresivo
                 renderApp();
             } else {
                 Swal.fire({ icon: 'error', title: 'Error', text: 'Credenciales incorrectas' });
             }
         }
 
-        function handleLogout() {
+        function handleLogout(autoLogout = false) {
             state.currentUser = null;
             state.currentView = 'login';
             
-            // Limpiar datos de sesión y detener temporizador
             localStorage.removeItem('notarySession');
             localStorage.removeItem('notaryLastView');
             clearTimeout(inactivityTimer);
             
             renderApp();
+            
+            if (autoLogout) {
+                Swal.fire({ icon: 'info', title: 'Sesión Expirada', text: 'Su sesión se ha cerrado automáticamente por 10 minutos de inactividad por seguridad.' });
+            }
         }
 
         function showModal(contentHTML) {
             const container = document.getElementById('modal-container');
             container.innerHTML = `
-                <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm transition-opacity z-40"></div>
-                <div class="fixed inset-0 z-50 overflow-y-auto">
-                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-                        ${contentHTML}
-                    </div>
-                </div>
-            `;
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm z-40"></div>
+                <div class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+                    ${contentHTML}
+                </div>`;
             container.classList.remove('hidden');
         }
 
@@ -1829,10 +1538,31 @@
             container.innerHTML = '';
         }
 
-        // --- INICIALIZACIÓN ---
-        window.onload = async () => {
-            Swal.fire({ title: 'Conectando con la Nube...', text: 'Descargando información segura', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+        //        window.onload = async () => {
+            Swal.fire({ title: 'Conectando con NEXUM...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            
             await loadDataFromFirebase();
+            
+            // Verificar si hay una sesión guardada válida
+            const savedSessionStr = localStorage.getItem('notarySession');
+            if (savedSessionStr) {
+                try {
+                    const sessionData = JSON.parse(savedSessionStr);
+                    const validUser = LOCAL_DB.users.find(u => u.id === sessionData.user.id);
+                    
+                    if (validUser) {
+                        state.currentUser = validUser;
+                        state.currentView = localStorage.getItem('notaryLastView') || 'dashboard';
+                        resetInactivityTimer();
+                    } else {
+                        // El usuario fue borrado de la base de datos mientras tenía sesión
+                        localStorage.removeItem('notarySession'); 
+                    }
+                } catch (e) {
+                    localStorage.removeItem('notarySession'); 
+                }
+            }
+            
             Swal.close();
             renderApp();
         };
