@@ -340,7 +340,7 @@
                 `;
             }
 
-            const headerRole = (state.currentUser.role === 1 || state.currentUser.role === 2) ? `<th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onclick="handleSort('creadoPorNombre')">Creado Por ${getSortIcon('creadoPorNombre')}</th>` : '';
+            const headerRole = (state.currentUser.role === 1 || state.currentUser.role === 2) ? `<th class="p-4 font-semibold text-left">Creado Por</th>` : '';
 
             return `
                 <div class="space-y-6">
@@ -369,18 +369,10 @@
                                         <th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors group" onclick="handleSort('secuencial')">
                                             <div class="flex items-center gap-1">ID Sistema <span class="text-gray-400 group-hover:text-gray-600">${getSortIcon('secuencial')}</span></div>
                                         </th>
-                                        <th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors group" onclick="handleSort('numero')">
-                                            <div class="flex items-center gap-1">Nº Trámite <span class="text-gray-400 group-hover:text-gray-600">${getSortIcon('numero')}</span></div>
-                                        </th>
-                                        <th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors group" onclick="handleSort('categoria')">
-                                            <div class="flex items-center gap-1">Categoría del Acto <span class="text-gray-400 group-hover:text-gray-600">${getSortIcon('categoria')}</span></div>
-                                        </th>
-                                        <th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors group" onclick="handleSort('tipo')">
-                                            <div class="flex items-center gap-1">Tipo <span class="text-gray-400 group-hover:text-gray-600">${getSortIcon('tipo')}</span></div>
-                                        </th>
-                                        <th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors group" onclick="handleSort('fecha')">
-                                            <div class="flex items-center gap-1">Fecha <span class="text-gray-400 group-hover:text-gray-600">${getSortIcon('fecha')}</span></div>
-                                        </th>
+                                        <th class="p-4 font-semibold text-left">Nº Trámite</th>
+                                        <th class="p-4 font-semibold text-left">Categoría del Acto</th>
+                                        <th class="p-4 font-semibold text-left">Tipo</th>
+                                        <th class="p-4 font-semibold text-left">Fecha</th>
                                         ${headerRole}
                                         <th class="p-4 font-semibold w-32 text-right">Acciones</th>
                                     </tr>
