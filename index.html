@@ -1099,7 +1099,6 @@
             container.innerHTML = html;
         }
 
-
         // --- MÓDULO DE USUARIOS (CRUD CON FIREBASE) ---
         function getUsuariosHTML() {
             if (state.currentUser.role === 3) return `<p class="text-red-500">Acceso denegado.</p>`;
@@ -1412,68 +1411,6 @@
             `;
         }
 
-        // --- NAVEGACIÓN Y UTILIDADES ---
-        function navigate(view) {
-            state.currentView = view;
-            renderCurrentView();
-        }
-
-        function updateSidebarActive() {
-            if(!state.currentUser) return;
-            const items = ['dashboard', 'actos', 'consultas', 'reportes', 'riesgos', 'usuarios'];
-            items.forEach(item => {
-                const el = document.getElementById(`nav-${item}`);
-                if (el) {
-                    if (item === state.currentView) {
-                        el.classList.add('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
-                    } else {
-                        el.classList.remove('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
-                    }
-                }
-            });
-        }
-
-        function handleLogin(e) {
-            e.preventDefault();
-            const user = document.getElementById('login-username').value;
-            const pass = document.getElementById('login-password').value;
-            
-            const foundUser = LOCAL_DB.users.find(u => u.username === user && u.password === pass);
-            
-            if (foundUser) {
-                state.currentUser = foundUser;
-                state.currentView = 'dashboard';
-                renderApp();
-            } else {
-                Swal.fire({ icon: 'error', title: 'Error', text: 'Credenciales incorrectas' });
-            }
-        }
-
-        function handleLogout() {
-            state.currentUser = null;
-            state.currentView = 'login';
-            renderApp();
-        }
-
-        function showModal(contentHTML) {
-            const container = document.getElementById('modal-container');
-            container.innerHTML = `
-                <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm transition-opacity z-40"></div>
-                <div class="fixed inset-0 z-50 overflow-y-auto">
-                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
-                        ${contentHTML}
-                    </div>
-                </div>
-            `;
-            container.classList.remove('hidden');
-        }
-
-        function closeModal() {
-            const container = document.getElementById('modal-container');
-            container.classList.add('hidden');
-            container.innerHTML = '';
-        }
-
         // --- MÓDULO DE CONSULTA MULTI-FUENTE (Judicial, SRI, Registro Civil, etc.) ---
         function getHistorialCedulas() {
             return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
@@ -1660,6 +1597,68 @@
             } catch (error) {
                 Swal.fire('Error', 'No se pudo eliminar la página.', 'error');
             }
+        }
+
+        // --- NAVEGACIÓN Y UTILIDADES ---
+        function navigate(view) {
+            state.currentView = view;
+            renderCurrentView();
+        }
+
+        function updateSidebarActive() {
+            if(!state.currentUser) return;
+            const items = ['dashboard', 'actos', 'consultas', 'reportes', 'riesgos', 'usuarios'];
+            items.forEach(item => {
+                const el = document.getElementById(`nav-${item}`);
+                if (el) {
+                    if (item === state.currentView) {
+                        el.classList.add('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
+                    } else {
+                        el.classList.remove('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
+                    }
+                }
+            });
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('login-username').value;
+            const pass = document.getElementById('login-password').value;
+            
+            const foundUser = LOCAL_DB.users.find(u => u.username === user && u.password === pass);
+            
+            if (foundUser) {
+                state.currentUser = foundUser;
+                state.currentView = 'dashboard';
+                renderApp();
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: 'Credenciales incorrectas' });
+            }
+        }
+
+        function handleLogout() {
+            state.currentUser = null;
+            state.currentView = 'login';
+            renderApp();
+        }
+
+        function showModal(contentHTML) {
+            const container = document.getElementById('modal-container');
+            container.innerHTML = `
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm transition-opacity z-40"></div>
+                <div class="fixed inset-0 z-50 overflow-y-auto">
+                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+                        ${contentHTML}
+                    </div>
+                </div>
+            `;
+            container.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            const container = document.getElementById('modal-container');
+            container.classList.add('hidden');
+            container.innerHTML = '';
         }
 
         // --- INICIALIZACIÓN ---
