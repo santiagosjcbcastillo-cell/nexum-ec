@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXUM - Sistema de Gestión Notarial</title>
+    <title>Sistema de Gestión Notarial - SaaS</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome para Iconos -->
@@ -13,7 +13,7 @@
     <!-- SheetJS para Exportación a Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
-    <!-- FIREBASE SDK (Compat Version para máxima compatibilidad con Vanilla JS) -->
+    <!-- FIREBASE SDK (Compat Version) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
@@ -22,7 +22,7 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: '#1e3a8a', 
+                        primary: 'var(--color-primary)', 
                         secondary: '#3b82f6',
                         accent: '#fbbf24',
                     }
@@ -31,37 +31,35 @@
         }
     </script>
     <style>
+        :root { --color-primary: #1e3a8a; }
         body { font-family: 'Inter', system-ui, sans-serif; }
-        .glass-effect {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-        }
+        .glass-effect { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
         .fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        .dyn-bg-primary { background-color: #1e3a8a !important; }
-        .dyn-text-primary { color: #1e3a8a !important; }
-        .dyn-border-primary { border-color: #1e3a8a !important; }
+        .dyn-bg-primary { background-color: var(--color-primary) !important; }
+        .dyn-text-primary { color: var(--color-primary) !important; }
+        .dyn-border-primary { border-color: var(--color-primary) !important; }
+
+        /* Estilos para tabs tipo pill en radios */
+        .radio-pill:checked + label {
+            background-color: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 overflow-hidden">
 
     <!-- CONTENEDOR PRINCIPAL -->
-    <div id="app" class="h-screen w-full flex flex-col">
-        <!-- Las vistas se inyectarán aquí mediante JavaScript -->
-    </div>
+    <div id="app" class="h-screen w-full flex flex-col"></div>
 
     <!-- CONTENEDOR DE MODALES -->
-    <div id="modal-container" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <!-- El contenido del modal se inyectará aquí -->
-    </div>
+    <div id="modal-container" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true"></div>
 
     <!-- LÓGICA DE LA APLICACIÓN -->
     <script>
@@ -73,60 +71,83 @@
             messagingSenderId: "412500807010",
             appId: "1:412500807010:web:4466cbccc2cf8ecc5df03b"
         };
-        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        const LOCAL_DB = {
-            notarias: [],
-            users: [],
-            actos: [],
-            fuentesConsulta: []
+        // Diccionarios Paramétricos
+        const DIC_MONEDAS = ['USD - Dólares Estadounidenses', 'EUR - Euros', 'COP - Pesos Colombianos', 'MXN - Pesos Mexicanos', 'PEN - Soles Peruanos', 'CLP - Pesos Chilenos', 'ARS - Pesos Argentinos'];
+        const DIC_NACIONALIDADES = ['Ecuatoriana', 'Colombiana', 'Peruana', 'Venezolana', 'Chilena', 'Argentina', 'Estadounidense', 'Española', 'Mexicana', 'Canadiense', 'Otra'];
+        const DIC_TIPOS_ID = [{id:'C', desc:'CÉDULA'}, {id:'R', desc:'RUC'}, {id:'P', desc:'PASAPORTE'}, {id:'A', desc:'ANÁLOGO'}];
+        const DIC_ESTADOS_CIVILES = ['Soltero/a', 'Casado/a', 'Divorciado/a', 'Unión de Hecho', 'Viudo/a'];
+        const DIC_TIPOS_BIEN = [
+            { id: 'CAS', desc: 'CASA', clase: 'Inmueble' }, { id: 'DEP', desc: 'DEPARTAMENTO', clase: 'Inmueble' },
+            { id: 'TER', desc: 'TERRENO', clase: 'Inmueble' }, { id: 'EDI', desc: 'EDIFICIO', clase: 'Inmueble' },
+            { id: 'OFI', desc: 'OFICINA', clase: 'Inmueble' }, { id: 'VEH', desc: 'VEHÍCULO', clase: 'Mueble' },
+            { id: 'EMB', desc: 'EMBARCACIONES', clase: 'Mueble' }, { id: 'OTR', desc: 'OTROS', clase: 'Ambos' }
+        ];
+        const DIC_PROVINCIAS = {
+            'Azuay': ['Cuenca', 'Gualaceo', 'Paute', 'Sigsig', 'Camilo Ponce Enríquez'],
+            'Guayas': ['Guayaquil', 'Daule', 'Durán', 'Milagro', 'Samborondón', 'Salitre'],
+            'Manabí': ['Portoviejo', 'Manta', 'Chone', 'Montecristi', 'El Carmen'],
+            'Pichincha': ['Quito', 'Cayambe', 'Mejía', 'Pedro Moncayo', 'Puerto Quito', 'Rumiñahui', 'San Miguel de Los Bancos'],
+            'Tungurahua': ['Ambato', 'Baños', 'Pelileo', 'Píllaro']
         };
 
         const CATEGORIAS = {
             'Protocolo': [
                 "Promesas de celebrar contratos", "Compraventa", "Compraventa de inmuebles (MIDUVI)", 
                 "Transferencia de dominio con constitución de hipoteca", "Constitución de hipoteca", 
-                "Constitución de hipoteca (BIESS/BEV/Municipalidades/Mutualistas/Cooperativas)", 
-                "Constitución de hipoteca abierta", "Constitución de hipoteca (MIDUVI)", "Donación", 
-                "Permuta", "Liquidación de la sociedad conyugal", "Liquidación de la sociedad de bienes", 
-                "Dación en pago", "Cesión de derechos onerosos", "Comodato", 
-                "Constitución de consorcios con cuantía determinada", "Traspaso de un crédito con cuantía", 
-                "Cesión de participaciones"
+                "Constitución de hipoteca (BIESS/BEV/Municipalidades)", "Constitución de hipoteca abierta", 
+                "Donación", "Permuta", "Liquidación de la sociedad conyugal", "Liquidación de la sociedad de bienes", 
+                "Dación en pago", "Cesión de derechos onerosos", "Comodato", "Constitución de consorcios con cuantía determinada", 
+                "Traspaso de un crédito con cuantía", "Cesión de participaciones"
             ],
             'Diligencia': [
                 "Reconocimiento de firmas de vehículo", "Reconocimiento de firmas de contrato"
             ]
         };
 
+        const LOCAL_DB = { notarias: [], users: [], actos: [], fuentesConsulta: [] };
+
         let state = {
             currentUser: null,
             currentView: 'login',
-            filtroNotariaGeneral: null, 
-            filtroNotariaReporte: null, 
-            adminTabActiva: 'usuarios', 
+            filtroNotariaGeneral: null,
+            filtroNotariaReporte: null,
+            adminTabActiva: 'usuarios',
             consultaTabActivaId: null,
-            sortColumn: 'secuencial', // New state variable for sorting column
-            sortOrder: 'desc' // New state variable for sorting order
+            sortColumn: 'secuencial',
+            sortOrder: 'desc'
         };
 
-        let inactivityTimer;
-        const INACTIVITY_LIMIT = 10 * 60 * 1000; 
+        // --- MANEJO DE SESIÓN LOCALSTORAGE ---
+        const SESSION_KEY = 'notarySessionData';
+        const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
+        let sessionTimer = null;
 
-        function resetInactivityTimer() {
-            clearTimeout(inactivityTimer);
+        function updateSessionTime() {
+            if (!state.currentUser) return;
+            const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY));
+            if (sessionData) {
+                sessionData.lastActive = new Date().getTime();
+                localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+            }
+            clearTimeout(sessionTimer);
+            sessionTimer = setTimeout(handleSessionTimeout, SESSION_TIMEOUT_MS);
+        }
+
+        function handleSessionTimeout() {
             if (state.currentUser) {
-                inactivityTimer = setTimeout(() => {
-                    handleLogout(true); 
-                }, INACTIVITY_LIMIT);
+                handleLogout();
+                Swal.fire({ icon: 'warning', title: 'Sesión Expirada', text: 'Tu sesión se ha cerrado automáticamente por inactividad (10 min).', confirmButtonColor: '#1e3a8a' });
             }
         }
 
-        window.addEventListener('mousemove', resetInactivityTimer);
-        window.addEventListener('keydown', resetInactivityTimer);
+        window.addEventListener('mousemove', updateSessionTime);
+        window.addEventListener('keydown', updateSessionTime);
+        window.addEventListener('click', updateSessionTime);
 
-
+        // --- CARGAR DATOS DESDE LA NUBE ---
         async function loadDataFromFirebase() {
             try {
                 const usersSnap = await db.collection('users').get();
@@ -148,16 +169,17 @@
                 }
 
                 if (LOCAL_DB.fuentesConsulta.length === 0) {
-                    const fuenteData = { nombre: 'Consulta e-Satje', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
-                    const fuenteRef = await db.collection('fuentesConsulta').add(fuenteData);
-                    LOCAL_DB.fuentesConsulta.push({ id: fuenteRef.id, ...fuenteData });
+                    const fData = { nombre: 'Función Judicial - Procesos', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
+                    const fRef = await db.collection('fuentesConsulta').add(fData);
+                    LOCAL_DB.fuentesConsulta.push({ id: fRef.id, ...fData });
                 }
             } catch (error) {
-                console.error("Error al cargar datos de Firebase:", error);
-                Swal.fire('Error', 'No se pudo establecer conexión con la base de datos en la nube.', 'error');
+                console.error("Firebase Error:", error);
+                Swal.fire('Error', 'No se pudo conectar con la base de datos.', 'error');
             }
         }
 
+        // --- NAVEGACIÓN Y RENDERIZADO PRINCIPAL ---
         function renderApp() {
             const app = document.getElementById('app');
             if (!state.currentUser) {
@@ -171,7 +193,6 @@
         function renderCurrentView() {
             const content = document.getElementById('main-content');
             if (!content) return;
-
             switch(state.currentView) {
                 case 'dashboard': content.innerHTML = getDashboardHTML(); break;
                 case 'usuarios': content.innerHTML = getUsuariosHTML(); break;
@@ -184,43 +205,78 @@
             updateSidebarActive();
         }
 
+        function navigate(view) {
+            state.currentView = view;
+            if (state.currentUser) {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY)) || {};
+                s.lastView = view;
+                localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+            }
+            renderCurrentView();
+        }
+
+        function updateSidebarActive() {
+            if(!state.currentUser) return;
+            ['dashboard', 'actos', 'consultas', 'reportes', 'riesgos', 'usuarios'].forEach(item => {
+                const el = document.getElementById(`nav-${item}`);
+                if (el) {
+                    if (item === state.currentView) el.classList.add('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
+                    else el.classList.remove('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
+                }
+            });
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('login-username').value;
+            const pass = document.getElementById('login-password').value;
+            const foundUser = LOCAL_DB.users.find(u => u.username === user && u.password === pass);
+            
+            if (foundUser) {
+                state.currentUser = foundUser;
+                state.currentView = 'dashboard';
+                localStorage.setItem(SESSION_KEY, JSON.stringify({ user: foundUser, lastActive: new Date().getTime(), lastView: 'dashboard' }));
+                updateSessionTime();
+                renderApp();
+            } else {
+                Swal.fire({ icon: 'error', title: 'Acceso Denegado', text: 'Credenciales incorrectas' });
+            }
+        }
+
+        function handleLogout() {
+            state.currentUser = null;
+            state.currentView = 'login';
+            localStorage.removeItem(SESSION_KEY);
+            clearTimeout(sessionTimer);
+            renderApp();
+        }
+
+        // --- COMPONENTES HTML BASE ---
         function getLoginHTML() {
             return `
                 <div class="flex items-center justify-center h-full w-full bg-gradient-to-br dyn-bg-primary to-blue-800">
                     <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md fade-in glass-effect">
                         <div class="text-center mb-8">
-                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full dyn-bg-primary text-white mb-4 shadow-lg">
-                                <i class="fas fa-balance-scale text-3xl"></i>
-                            </div>
-                            <h1 class="text-2xl font-bold text-gray-800">NEXUM</h1>
+                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full dyn-bg-primary text-white mb-4 shadow-lg"><i class="fas fa-balance-scale text-3xl"></i></div>
+                            <h1 class="text-2xl font-bold text-gray-800 tracking-tight">NEXUM</h1>
                             <p class="text-gray-500 text-sm mt-2">Ingrese sus credenciales para acceder</p>
                         </div>
                         <form onsubmit="handleLogin(event)" class="space-y-5">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
                                 <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i class="fas fa-user text-gray-400"></i>
-                                    </div>
-                                    <input type="text" id="login-username" required
-                                        class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary sm:text-sm transition-colors"
-                                        placeholder="Ingrese su usuario">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-user text-gray-400"></i></div>
+                                    <input type="text" id="login-username" required class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary sm:text-sm transition-colors" placeholder="Ingrese su usuario">
                                 </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
                                 <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i class="fas fa-lock text-gray-400"></i>
-                                    </div>
-                                    <input type="password" id="login-password" required
-                                        class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary sm:text-sm transition-colors"
-                                        placeholder="••••••••">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-lock text-gray-400"></i></div>
+                                    <input type="password" id="login-password" required class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none dyn-border-primary sm:text-sm transition-colors" placeholder="••••••••">
                                 </div>
                             </div>
-                            <button type="submit" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white dyn-bg-primary hover:opacity-90 focus:outline-none transition-colors">
-                                Ingresar
-                            </button>
+                            <button type="submit" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white dyn-bg-primary hover:opacity-90 transition-colors">Ingresar</button>
                         </form>
                     </div>
                 </div>
@@ -239,18 +295,14 @@
                     </div>
                     <div class="flex items-center gap-6">
                         ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? 
-                            `<button onclick="navigate('usuarios')" class="text-gray-600 dyn-text-primary font-medium text-sm transition-colors hover:opacity-80">
-                                <i class="fas fa-users-cog mr-1"></i> Administración
-                            </button>` : ''
+                            `<button onclick="navigate('usuarios')" class="text-gray-600 dyn-text-primary font-medium text-sm transition-colors hover:opacity-80"><i class="fas fa-users-cog mr-1"></i> Gestión de Usuarios</button>` : ''
                         }
                         <div class="flex items-center gap-3 border-l pl-6 border-gray-200">
                             <div class="text-right hidden sm:block">
                                 <p class="text-sm font-bold text-gray-800">${state.currentUser.nombre}</p>
                                 <p class="text-xs text-gray-500">${roleName} | ${notariaName}</p>
                             </div>
-                            <button onclick="handleLogout()" class="w-10 h-10 rounded-full bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Cerrar Sesión">
-                                <i class="fas fa-sign-out-alt"></i>
-                            </button>
+                            <button onclick="handleLogout()" class="w-10 h-10 rounded-full bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></button>
                         </div>
                     </div>
                 </header>
@@ -259,34 +311,19 @@
                     <aside class="w-64 dyn-bg-primary text-white flex-shrink-0 overflow-y-auto hidden md:block">
                         <nav class="p-4 space-y-1">
                             <p class="px-3 text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 mt-4">Principal</p>
+                            <a href="#" onclick="navigate('dashboard')" id="nav-dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors"><i class="fas fa-home w-5 text-center"></i> <span>Inicio</span></a>
+                            <a href="#" onclick="navigate('actos')" id="nav-actos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors"><i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span></a>
+                            <a href="#" onclick="navigate('consultas')" id="nav-consultas" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors text-amber-300 font-medium"><i class="fas fa-gavel w-5 text-center"></i> <span>Consultas Externas</span></a>
                             
-                            <a href="#" onclick="navigate('dashboard')" id="nav-dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                <i class="fas fa-home w-5 text-center"></i> <span>Inicio</span>
-                            </a>
-                            
-                            <a href="#" onclick="navigate('consultas')" id="nav-consultas" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors text-amber-300 font-medium">
-                                <i class="fas fa-gavel w-5 text-center"></i> <span>Consultas Externas</span>
-                            </a>
-
-                            <a href="#" onclick="navigate('actos')" id="nav-actos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                <i class="fas fa-file-signature w-5 text-center"></i> <span>Creación de Actos</span>
-                            </a>
-
                             ${(state.currentUser.role === 1 || state.currentUser.role === 2) ? `
-                                <p class="px-3 text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 mt-6">Gestión e Informes</p>
-                                <a href="#" onclick="navigate('reportes')" id="nav-reportes" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                    <i class="fas fa-chart-bar w-5 text-center"></i> <span>Generación de Reportes</span>
-                                </a>
-                                <a href="#" onclick="navigate('riesgos')" id="nav-riesgos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors">
-                                    <i class="fas fa-shield-alt w-5 text-center"></i> <span>Análisis de Riesgos</span>
-                                </a>
+                                <p class="px-3 text-xs font-semibold text-white/50 uppercase tracking-wider mb-2 mt-6">Administración</p>
+                                <a href="#" onclick="navigate('reportes')" id="nav-reportes" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors"><i class="fas fa-chart-bar w-5 text-center"></i> <span>Generación de Reportes</span></a>
+                                <a href="#" onclick="navigate('riesgos')" id="nav-riesgos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors"><i class="fas fa-shield-alt w-5 text-center"></i> <span>Análisis de Riesgos</span></a>
+                                <a href="#" onclick="navigate('usuarios')" id="nav-usuarios" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-black/20 transition-colors"><i class="fas fa-users w-5 text-center"></i> <span>Usuarios del Sistema</span></a>
                             ` : ''}
                         </nav>
                     </aside>
-
-                    <main id="main-content" class="flex-1 overflow-y-auto p-6 bg-gray-50 fade-in">
-                        <!-- Vista dinámica -->
-                    </main>
+                    <main id="main-content" class="flex-1 overflow-y-auto p-6 bg-gray-50 fade-in"></main>
                 </div>
             `;
         }
@@ -294,9 +331,7 @@
         function getDashboardHTML() {
             return `
                 <div class="h-full flex flex-col items-center justify-center text-center space-y-6">
-                    <div class="w-32 h-32 bg-white rounded-full shadow-lg flex items-center justify-center border-4 border-gray-100">
-                        <i class="fas fa-balance-scale text-6xl dyn-text-primary"></i>
-                    </div>
+                    <div class="w-32 h-32 bg-white rounded-full shadow-lg flex items-center justify-center border-4 border-gray-100"><i class="fas fa-balance-scale text-6xl dyn-text-primary"></i></div>
                     <div>
                         <h2 class="text-3xl font-bold text-gray-800">Bienvenido a NEXUM</h2>
                         <p class="text-gray-500 mt-2 max-w-lg mx-auto">Plataforma integral para el control de actos, diligencias, cumplimiento y reportes operativos.</p>
@@ -320,8 +355,8 @@
                         </div>
                         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow" onclick="navigate('usuarios')">
                             <div class="bg-purple-50 p-3 rounded-full text-purple-600 mb-3"><i class="fas fa-users-cog text-xl"></i></div>
-                            <h3 class="font-semibold text-gray-700">Administración</h3>
-                            <p class="text-xs text-gray-400 mt-1">Usuarios y Notarías</p>
+                            <h3 class="font-semibold text-gray-700">Usuarios</h3>
+                            <p class="text-xs text-gray-400 mt-1">Administración de personal</p>
                         </div>
                         ` : ''}
                     </div>
@@ -329,18 +364,21 @@
             `;
         }
 
+        // --- MÓDULO DE ACTOS ---
         function getActosHTML() {
             let notariaSelector = '';
             if (state.currentUser.role === 1) {
                 notariaSelector = `
-                    <select id="filtro_notaria_actos" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none dyn-border-primary bg-white shadow-sm" onchange="cambiarFiltroGeneral(this.value)">
+                    <select id="filtro_notaria_general" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none dyn-border-primary bg-white shadow-sm" onchange="cambiarFiltroGeneral(this.value)">
                         <option value="">Todas las Notarías</option>
                         ${LOCAL_DB.notarias.map(n => `<option value="${n.id}" ${state.filtroNotariaGeneral === n.id ? 'selected':''}>${n.nombre}</option>`).join('')}
-                    </select>
-                `;
+                    </select>`;
             }
 
             const headerRole = (state.currentUser.role === 1 || state.currentUser.role === 2) ? `<th class="p-4 font-semibold text-left">Creado Por</th>` : '';
+
+            // Icono de ordenamiento SOLO en ID Sistema
+            const sortIcon = state.sortOrder === 'asc' ? '<i class="fas fa-sort-up text-primary"></i>' : '<i class="fas fa-sort-down text-primary"></i>';
 
             return `
                 <div class="space-y-6">
@@ -366,8 +404,8 @@
                             <table class="w-full text-left border-collapse">
                                 <thead>
                                     <tr class="bg-gray-50 text-gray-600 text-sm border-b select-none">
-                                        <th class="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors group" onclick="handleSort('secuencial')">
-                                            <div class="flex items-center gap-1">ID Sistema <span class="text-gray-400 group-hover:text-gray-600">${getSortIcon('secuencial')}</span></div>
+                                        <th class="p-4 font-semibold cursor-pointer hover:bg-gray-200 transition-colors group" onclick="toggleSort()">
+                                            <div class="flex items-center gap-2">ID Sistema <span class="text-gray-400 group-hover:text-gray-700">${sortIcon}</span></div>
                                         </th>
                                         <th class="p-4 font-semibold text-left">Nº Trámite</th>
                                         <th class="p-4 font-semibold text-left">Categoría del Acto</th>
@@ -377,42 +415,12 @@
                                         <th class="p-4 font-semibold w-32 text-right">Acciones</th>
                                     </tr>
                                 </thead>
-                                <tbody id="actos-table-body" class="divide-y divide-gray-100">
-                                </tbody>
+                                <tbody id="actos-table-body" class="divide-y divide-gray-100"></tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             `;
-        }
-
-        // Helper function to render the correct sort icon
-        function getSortIcon(columnName) {
-            if (state.sortColumn !== columnName) {
-                return '<i class="fas fa-sort opacity-30"></i>';
-            }
-            return state.sortOrder === 'asc' ? '<i class="fas fa-sort-up text-primary"></i>' : '<i class="fas fa-sort-down text-primary"></i>';
-        }
-
-        // Function to handle sorting logic
-        function handleSort(columnName) {
-            if (state.sortColumn === columnName) {
-                // Toggle order if clicking the same column
-                state.sortOrder = state.sortOrder === 'asc' ? 'desc' : 'asc';
-            } else {
-                // Set new column and default to ascending
-                state.sortColumn = columnName;
-                state.sortOrder = 'asc';
-            }
-            
-            // Re-render the view to update headers and table body
-            if (state.currentView === 'actos') {
-                const content = document.getElementById('main-content');
-                if (content) {
-                    content.innerHTML = getActosHTML();
-                    renderActosTable();
-                }
-            }
         }
 
         function cambiarFiltroGeneral(val) {
@@ -421,13 +429,20 @@
             if (state.currentView === 'riesgos') renderCurrentView(); 
         }
 
+        function toggleSort() {
+            state.sortOrder = state.sortOrder === 'asc' ? 'desc' : 'asc';
+            const content = document.getElementById('main-content');
+            if (content) { content.innerHTML = getActosHTML(); renderActosTable(); }
+        }
+
         function renderActosTable() {
             const tbody = document.getElementById('actos-table-body');
             const buscadorInput = document.getElementById('buscador-actos');
             if(!tbody) return;
 
-            let actosMostrar = [...LOCAL_DB.actos]; // Create a copy to avoid mutating original data directly here
+            let actosMostrar = [...LOCAL_DB.actos];
             
+            // Privacidad de roles
             if (state.currentUser.role === 2) {
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId);
             } else if (state.currentUser.role === 1 && state.filtroNotariaGeneral) {
@@ -436,6 +451,7 @@
                 actosMostrar = actosMostrar.filter(a => a.notariaId === state.currentUser.notariaId && a.creadoPorId === state.currentUser.id);
             }
 
+            // Búsqueda
             const termino = buscadorInput ? buscadorInput.value.toLowerCase() : '';
             if (termino.trim() !== '') {
                 actosMostrar = actosMostrar.filter(a => {
@@ -444,26 +460,10 @@
                 });
             }
 
-            // --- SORTING LOGIC ---
+            // Ordenamiento EXCLUSIVO por secuencial (ID Sistema)
             actosMostrar.sort((a, b) => {
-                let valA = a[state.sortColumn];
-                let valB = b[state.sortColumn];
-
-                // Handle specific column types
-                if (state.sortColumn === 'secuencial') {
-                    // Numerical sort for ID
-                    valA = parseInt(valA) || 0;
-                    valB = parseInt(valB) || 0;
-                } else if (state.sortColumn === 'fecha') {
-                    // Date sort
-                    valA = new Date(valA).getTime() || 0;
-                    valB = new Date(valB).getTime() || 0;
-                } else {
-                    // String sort (case-insensitive)
-                    valA = String(valA || '').toLowerCase();
-                    valB = String(valB || '').toLowerCase();
-                }
-
+                let valA = parseInt(a.secuencial) || 0;
+                let valB = parseInt(b.secuencial) || 0;
                 if (valA < valB) return state.sortOrder === 'asc' ? -1 : 1;
                 if (valA > valB) return state.sortOrder === 'asc' ? 1 : -1;
                 return 0;
@@ -478,7 +478,6 @@
             tbody.innerHTML = actosMostrar.map(acto => {
                 const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
                 const numTramiteHtml = acto.numero ? acto.numero : '<span class="text-gray-400 italic text-xs">Pendiente</span>';
-                
                 const colCreadoPor = (state.currentUser.role === 1 || state.currentUser.role === 2) ? 
                     `<td class="p-4 text-sm font-medium text-gray-600"><i class="fas fa-user-edit text-gray-400 mr-1"></i> ${acto.creadoPorNombre || 'Sistema'}</td>` : '';
 
@@ -487,30 +486,21 @@
                     <td class="p-4 font-bold text-gray-800">${seqStr}</td>
                     <td class="p-4 text-sm font-medium text-gray-700">${numTramiteHtml}</td>
                     <td class="p-4 text-sm text-gray-600">${acto.categoria}</td>
-                    <td class="p-4">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${acto.tipo === 'Protocolo' ? 'bg-indigo-100 text-indigo-800' : 'bg-teal-100 text-teal-800'}">
-                            ${acto.tipo}
-                        </span>
-                    </td>
+                    <td class="p-4"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${acto.tipo === 'Protocolo' ? 'bg-indigo-100 text-indigo-800' : 'bg-teal-100 text-teal-800'}">${acto.tipo}</span></td>
                     <td class="p-4 text-sm text-gray-500 whitespace-nowrap"><i class="far fa-calendar-alt mr-1"></i> ${acto.fecha}</td>
                     ${colCreadoPor}
                     <td class="p-4 whitespace-nowrap">
                         <div class="flex items-center justify-end gap-2">
-                            <button onclick="openEditActoModal('${acto.id}')" class="w-8 h-8 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors" title="Editar Detalles e Intervinientes">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button onclick="descargarFormulario('${acto.id}')" class="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-600 hover:text-white flex items-center justify-center transition-colors" title="Descargar Formulario">
-                                <i class="fas fa-file-download"></i>
-                            </button>
-                            <button onclick="eliminarActo('${acto.id}')" class="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-600 hover:text-white flex items-center justify-center transition-colors" title="Eliminar Acto">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
+                            <button onclick="openEditActoModal('${acto.id}')" class="w-8 h-8 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors" title="Editar Detalles e Intervinientes"><i class="fas fa-edit"></i></button>
+                            <button onclick="descargarFormulario('${acto.id}')" class="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-600 hover:text-white flex items-center justify-center transition-colors" title="Descargar Formulario"><i class="fas fa-file-download"></i></button>
+                            <button onclick="eliminarActo('${acto.id}')" class="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-600 hover:text-white flex items-center justify-center transition-colors" title="Eliminar Acto"><i class="fas fa-trash-alt"></i></button>
                         </div>
                     </td>
-                </tr>
-            `}).join('');
+                </tr>`;
+            }).join('');
         }
 
+        // --- CREAR NUEVO ACTO (Condición de Carrera Resuelta) ---
         function openNuevoActoModal() {
             const html = `
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all fade-in">
@@ -523,11 +513,11 @@
                             <label class="block text-sm font-semibold text-gray-700 mb-3">Tipo de Trámite</label>
                             <div class="flex gap-6">
                                 <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="tipo_tramite" value="Protocolo" class="w-4 h-4 text-blue-600 border-gray-300" onchange="updateCategorias('Protocolo')" required>
+                                    <input type="radio" name="tipo_tramite" value="Protocolo" class="w-4 h-4 text-blue-600 border-gray-300 radio-pill" onchange="updateCategorias('Protocolo')" required>
                                     <span class="text-gray-700">Protocolo</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="tipo_tramite" value="Diligencia" class="w-4 h-4 text-blue-600 border-gray-300" onchange="updateCategorias('Diligencia')">
+                                    <input type="radio" name="tipo_tramite" value="Diligencia" class="w-4 h-4 text-blue-600 border-gray-300 radio-pill" onchange="updateCategorias('Diligencia')">
                                     <span class="text-gray-700">Diligencia</span>
                                 </label>
                             </div>
@@ -535,7 +525,7 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Número de Trámite</label>
-                                <input type="text" id="acto_numero" placeholder="Opcional (se puede llenar luego)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
+                                <input type="text" id="acto_numero" placeholder="Opcional" class="block w-full border border-gray-300 rounded-lg px-3 py-2 sm:text-sm">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
@@ -562,127 +552,98 @@
             const select = document.getElementById('acto_categoria');
             select.disabled = false;
             select.classList.remove('bg-gray-50');
-            const opciones = CATEGORIAS[tipo];
-            select.innerHTML = '<option value="">Seleccione una categoría...</option>' + 
-                opciones.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+            select.innerHTML = '<option value="">Seleccione una categoría...</option>' + CATEGORIAS[tipo].map(opt => `<option value="${opt}">${opt}</option>`).join('');
         }
 
         async function guardarNuevoActo(e) {
             e.preventDefault();
-            
             let notariaId = state.currentUser.notariaId;
             if (state.currentUser.role === 1) {
-                if (state.filtroNotariaGeneral) {
-                    notariaId = state.filtroNotariaGeneral;
-                } else {
-                    Swal.fire('Atención', 'Como Administrador Global, primero seleccione una Notaría en el filtro superior para asignar este acto.', 'warning');
-                    return;
-                }
+                if (state.filtroNotariaGeneral) notariaId = state.filtroNotariaGeneral;
+                else { Swal.fire('Atención', 'Como Administrador Global, primero seleccione una Notaría en el filtro superior.', 'warning'); return; }
             }
 
-            Swal.fire({ title: 'Guardando en la nube...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            Swal.fire({ title: 'Asegurando ID...', text: 'Verificando concurrencia en la nube', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
 
-            const tipo = document.querySelector('input[name="tipo_tramite"]:checked').value;
-            const numero = document.getElementById('acto_numero').value;
-            const fecha = document.getElementById('acto_fecha').value;
-            const categoria = document.getElementById('acto_categoria').value;
-            
             try {
-                // SOLUCIÓN DE CONCURRENCIA: 
-                // En lugar de usar la memoria local (LOCAL_DB), consultamos directamente a Firebase 
-                // para obtener el secuencial más alto en ESTE preciso instante.
+                // Consulta en tiempo real (evita duplicados de ID)
                 const actosSnap = await db.collection('actos').where('notariaId', '==', notariaId).get();
-                
                 let maxSecuencial = 0;
-                actosSnap.forEach(doc => {
-                    const seq = doc.data().secuencial || 0;
-                    if (seq > maxSecuencial) maxSecuencial = seq;
-                });
-                
+                actosSnap.forEach(doc => { const seq = doc.data().secuencial || 0; if (seq > maxSecuencial) maxSecuencial = seq; });
                 const nuevoSecuencial = maxSecuencial + 1;
 
                 const nuevoActoData = { 
-                    notariaId: notariaId, 
-                    secuencial: nuevoSecuencial, 
-                    tipo: tipo, 
-                    numero: numero, 
-                    categoria: categoria, 
-                    fecha: fecha, 
-                    cuantia: '', 
-                    forma_pago: '', 
-                    intervinientes: [],
-                    creadoPorId: state.currentUser.id,
-                    creadoPorNombre: state.currentUser.nombre 
+                    notariaId: notariaId, secuencial: nuevoSecuencial, 
+                    tipo: document.querySelector('input[name="tipo_tramite"]:checked').value, 
+                    numero: document.getElementById('acto_numero').value, 
+                    categoria: document.getElementById('acto_categoria').value, 
+                    fecha: document.getElementById('acto_fecha').value, 
+                    cuantia: '', forma_pago: '', moneda: 'USD - Dólares Estadounidenses',
+                    clase_bien: '', tipo_bien: '', intervinientes: [],
+                    creadoPorId: state.currentUser.id, creadoPorNombre: state.currentUser.nombre 
                 };
 
-                // Guardamos en la nube
                 const docRef = await db.collection('actos').add(nuevoActoData);
                 nuevoActoData.id = docRef.id;
-                
-                // Actualizamos la memoria local para que la tabla se dibuje al instante
                 LOCAL_DB.actos.push(nuevoActoData);
                 
                 closeModal();
-                Swal.fire({ icon: 'success', title: 'Guardado', text: 'El acto ha sido registrado exitosamente.', timer: 1500, showConfirmButton: false });
+                Swal.fire({ icon: 'success', title: 'Guardado', text: `Asignado el ID Acto-${String(nuevoSecuencial).padStart(5, '0')}`, timer: 2000, showConfirmButton: false });
                 if (state.currentView === 'actos') renderActosTable();
                 
             } catch (error) {
-                console.error(error);
                 Swal.fire('Error', 'No se pudo guardar en la base de datos.', 'error');
             }
         }
 
+        // --- EDICIÓN MASIVA (ACTO + INTERVINIENTES MULTIFORMATO) ---
         function openEditActoModal(actoId) {
             const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
 
-            const roleName = state.currentUser.role === 1 ? 'SuperAdmin' : (state.currentUser.role === 2 ? 'Oficial' : 'Matrizador');
-            
             window._tempEditIntervinientes = JSON.parse(JSON.stringify(acto.intervinientes || []));
 
             const html = `
-                <div class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden transform transition-all fade-in max-h-[95vh] flex flex-col">
+                <div class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden transform transition-all fade-in max-h-[95vh] flex flex-col">
                     <div class="px-6 py-4 border-b border-gray-200 bg-white flex justify-between items-center sticky top-0 z-20">
                         <div class="flex items-center gap-3">
                             <button onclick="closeModal()" class="text-gray-400 hover:text-gray-700 transition-colors"><i class="fas fa-arrow-left text-lg"></i></button>
-                            <h3 class="text-2xl font-black text-gray-900 tracking-tight">Editar Acto Notarial</h3>
-                        </div>
-                        <div class="text-sm text-gray-500 hidden sm:block">
-                            Sesión: <span class="font-bold text-gray-800">${state.currentUser.nombre}</span> | <span class="bg-gray-100 px-2 py-1 rounded-md text-xs border border-gray-200">${roleName}</span>
+                            <h3 class="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">Editar Acto: Acto-${String(acto.secuencial).padStart(5,'0')}</h3>
                         </div>
                     </div>
 
-                    <div class="flex-1 overflow-y-auto p-4 sm:p-8">
-                        <form id="edit-acto-form" onsubmit="guardarEdicionActo(event, '${actoId}')" class="space-y-8 max-w-4xl mx-auto">
+                    <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-100">
+                        <form id="edit-acto-form" onsubmit="guardarEdicionActo(event, '${actoId}')" class="space-y-6 max-w-5xl mx-auto">
                             
+                            <!-- SECCIÓN: DETALLES DEL ACTO -->
                             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                                <div class="bg-[#111827] text-white px-6 py-4">
-                                    <h4 class="text-lg font-bold flex items-center gap-2"><i class="far fa-file-alt"></i> Detalles del Acto Notarial</h4>
-                                    <p class="text-sm text-gray-400 mt-1">Ingrese el protocolo, tipo de acto, fecha y valor del trámite.</p>
-                                </div>
-                                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Número de Protocolo</label>
-                                        <input type="text" id="edit_numero" value="${acto.numero || ''}" class="block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                <div class="bg-[#1e293b] text-white px-5 py-3"><h4 class="font-bold flex items-center gap-2"><i class="fas fa-file-invoice"></i> Detalles del Acto Notarial</h4></div>
+                                <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-5">
+                                    <div class="md:col-span-3">
+                                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Categoría</label>
+                                        <input type="text" value="${acto.categoria}" disabled class="block w-full border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600 font-medium">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Fecha del Acto</label>
-                                        <input type="date" id="edit_fecha" value="${acto.fecha}" required class="block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
-                                    </div>
-                                    <div class="md:col-span-2">
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Tipo de Acto</label>
-                                        <input type="text" value="${acto.categoria}" disabled class="block w-full border border-gray-200 bg-gray-50 rounded-lg px-4 py-2.5 text-sm text-gray-600 font-medium">
+                                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Número Protocolo</label>
+                                        <input type="text" id="edit_numero" value="${acto.numero || ''}" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Cuantía (USD)</label>
-                                        <div class="relative">
-                                            <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-500 font-medium">$</span>
-                                            <input type="number" step="0.01" id="edit_cuantia" value="${acto.cuantia}" class="block w-full border border-gray-300 rounded-lg pl-9 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
-                                        </div>
+                                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Fecha</label>
+                                        <input type="date" id="edit_fecha" value="${acto.fecha}" required class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Forma de Pago</label>
-                                        <select id="edit_forma_pago" class="block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
+                                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Moneda</label>
+                                        <select id="edit_moneda" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
+                                            ${DIC_MONEDAS.map(m => `<option value="${m}" ${acto.moneda === m || (!acto.moneda && m.startsWith('USD')) ? 'selected' : ''}>${m}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Cuantía</label>
+                                        <input type="number" step="0.01" id="edit_cuantia" value="${acto.cuantia}" placeholder="0.00" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Forma de Pago</label>
+                                        <select id="edit_forma_pago" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary">
                                             <option value="">Seleccione...</option>
                                             <option value="Efectivo" ${acto.forma_pago==='Efectivo'?'selected':''}>Efectivo</option>
                                             <option value="Transferencia" ${acto.forma_pago==='Transferencia'?'selected':''}>Transferencia</option>
@@ -690,43 +651,85 @@
                                             <option value="Indeterminada" ${acto.forma_pago==='Indeterminada'?'selected':''}>Indeterminada</option>
                                         </select>
                                     </div>
+                                    
+                                    <div class="col-span-1 md:col-span-3 border-t pt-4 mt-2 grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <div>
+                                            <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Clasificación del Bien</label>
+                                            <select id="edit_clase_bien" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary" onchange="actualizarTiposDeBien()">
+                                                <option value="">No aplica / Seleccione...</option>
+                                                <option value="Inmueble" ${acto.clase_bien==='Inmueble'?'selected':''}>Bien Inmueble</option>
+                                                <option value="Mueble" ${acto.clase_bien==='Mueble'?'selected':''}>Bien Mueble</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Tipo de Bien</label>
+                                            <select id="edit_tipo_bien" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-primary focus:border-primary bg-white" data-selected="${acto.tipo_bien||''}">
+                                                <option value="">Seleccione primero la clasificación...</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
+                            <!-- SECCIÓN: INTERVINIENTES -->
                             <div>
-                                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-5 gap-3">
-                                    <h4 class="text-xl font-bold text-gray-900 flex items-center gap-2"><i class="fas fa-user-friends"></i> Intervinientes</h4>
-                                    <button type="button" onclick="agregarIntervinienteCard()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
-                                        <i class="fas fa-plus text-gray-500"></i> Agregar compareciente
+                                <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-3 bg-white p-3 rounded-lg shadow-sm border border-gray-200">
+                                    <h4 class="text-lg font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-users text-primary"></i> Intervinientes</h4>
+                                    <button type="button" onclick="agregarIntervinienteBlank()" class="px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm">
+                                        <i class="fas fa-plus"></i> Agregar Compareciente
                                     </button>
                                 </div>
-                                <div id="edit_intervinientes_list" class="space-y-4"></div>
+                                <div id="edit_intervinientes_list" class="space-y-5"></div>
                             </div>
                         </form>
                     </div>
                     
                     <div class="px-6 py-4 border-t border-gray-200 bg-white flex justify-end gap-3 sticky bottom-0 z-20">
                         <button type="button" onclick="closeModal()" class="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-semibold shadow-sm">Cancelar</button>
-                        <button type="submit" form="edit-acto-form" class="px-6 py-2.5 dyn-bg-primary rounded-lg text-white hover:opacity-90 transition-colors font-semibold shadow-sm flex items-center gap-2">
-                            <i class="fas fa-save"></i> Guardar Cambios
-                        </button>
+                        <button type="submit" form="edit-acto-form" class="px-6 py-2.5 dyn-bg-primary rounded-lg text-white hover:opacity-90 transition-colors font-semibold shadow-sm flex items-center gap-2"><i class="fas fa-save"></i> Guardar Todo</button>
                     </div>
                 </div>
             `;
             showModal(html);
+            window.actualizarTiposDeBien();
             window.renderIntervinientesCards();
         }
 
-        window.syncIntervinientesForm = function() {
-            const container = document.getElementById('edit_intervinientes_list');
-            if(!container) return;
-            const cards = container.querySelectorAll('.interviniente-card');
-            window._tempEditIntervinientes = Array.from(cards).map(card => ({
-                tipo: card.querySelector('.int-tipo').value,
-                identificacion: card.querySelector('.int-id').value,
-                nombre: card.querySelector('.int-nombre').value,
-                nacionalidad: card.querySelector('.int-nacionalidad').value
-            }));
+        window.actualizarTiposDeBien = function() {
+            const claseSelect = document.getElementById('edit_clase_bien');
+            const tipoSelect = document.getElementById('edit_tipo_bien');
+            if(!claseSelect || !tipoSelect) return;
+            const clase = claseSelect.value;
+            const selected = tipoSelect.getAttribute('data-selected');
+            
+            if(!clase) {
+                tipoSelect.innerHTML = '<option value="">No aplica...</option>';
+                tipoSelect.disabled = true; return;
+            }
+            tipoSelect.disabled = false;
+            let options = '<option value="">Seleccione...</option>';
+            DIC_TIPOS_BIEN.forEach(b => {
+                if(b.clase === clase || b.clase === 'Ambos') {
+                    options += `<option value="${b.id}" ${selected===b.id?'selected':''}>${b.id} - ${b.desc}</option>`;
+                }
+            });
+            tipoSelect.innerHTML = options;
+        };
+
+        window.agregarIntervinienteBlank = function() {
+            window.syncIntervinientesForm(); 
+            window._tempEditIntervinientes.push({
+                rol: '01', naturaleza: 'Natural', tipoId: 'C', numId: '', nombre: '', nacionalidad: 'Ecuatoriana',
+                estadoCivil: 'Soltero/a', provincia: 'Pichincha', canton: 'Quito', direccion: '', profesion: '', telefono: '', email: '',
+                comparecencia: 'Propios Derechos',
+                // Juridica
+                razonSocial: '', formaRepresentacion: 'Representante Legal',
+                // Representante
+                repCalidad: 'Apoderado/a Especial', repTipoId: 'C', repNumId: '', repNombre: '', repNacionalidad: 'Ecuatoriana', repEstadoCivil: 'Soltero/a', repProvincia: 'Pichincha', repCanton: 'Quito', repDireccion: '', repProfesion: '', repTelefono: '', repEmail: '',
+                // Beneficiario extra
+                sitLaboral: 'Dependencia', tipoEmp: 'Privado', lugarTrabajo: '', cargo: '', ingresos: '', isPEP: 'No'
+            });
+            window.renderIntervinientesCards();
         };
 
         window.renderIntervinientesCards = function() {
@@ -734,65 +737,249 @@
             if (!container) return;
             
             if (window._tempEditIntervinientes.length === 0) {
-                container.innerHTML = `<div class="py-10 text-center text-gray-500 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50">No hay intervinientes registrados.<br><span class="text-sm mt-1 block">Haga clic en "Agregar compareciente" para iniciar.</span></div>`;
-                return;
+                container.innerHTML = `<div class="py-12 text-center text-gray-500 border-2 border-dashed border-gray-300 rounded-xl bg-white shadow-sm"><i class="fas fa-user-plus text-3xl mb-3 opacity-30"></i><p>El acto aún no tiene intervinientes.</p></div>`; return;
             }
 
-            container.innerHTML = window._tempEditIntervinientes.map((int, idx) => `
-                <div class="interviniente-card bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden transition-all">
-                    <div class="bg-gray-50/80 px-5 py-3.5 border-b border-gray-200 flex justify-between items-center">
-                        <div class="flex items-center gap-3">
-                            <span class="font-bold text-gray-900">Interviniente #${idx + 1}</span>
-                            <span class="text-[11px] font-medium text-gray-500 bg-gray-200/80 px-2.5 py-1 rounded-md flex items-center gap-1.5"><i class="fas fa-lock text-gray-400"></i> Guardado (Trazabilidad UAFE)</span>
+            let html = '';
+            window._tempEditIntervinientes.forEach((int, idx) => {
+                const isNatural = int.naturaleza === 'Natural';
+                const isBeneficiario = int.rol === '02';
+                const hasRep = (!isNatural) || (isNatural && int.comparecencia === 'Representado');
+
+                // Dictionaries HTML
+                const optNac = (sel) => DIC_NACIONALIDADES.map(n => `<option value="${n}" ${sel===n?'selected':''}>${n}</option>`).join('');
+                const optId = (sel) => DIC_TIPOS_ID.map(t => `<option value="${t.id}" ${sel===t.id?'selected':''}>${t.id} - ${t.desc}</option>`).join('');
+                const optCiv = (sel) => DIC_ESTADOS_CIVILES.map(e => `<option value="${e}" ${sel===e?'selected':''}>${e}</option>`).join('');
+                const optProv = (sel) => Object.keys(DIC_PROVINCIAS).map(p => `<option value="${p}" ${sel===p?'selected':''}>${p}</option>`).join('');
+                
+                // Cantones base on current prov
+                const cantonesBase = DIC_PROVINCIAS[int.provincia || 'Pichincha'] || [];
+                const optCant = (sel) => cantonesBase.map(c => `<option value="${c}" ${sel===c?'selected':''}>${c}</option>`).join('');
+                
+                const cantonesRep = DIC_PROVINCIAS[int.repProvincia || 'Pichincha'] || [];
+                const optCantRep = (sel) => cantonesRep.map(c => `<option value="${c}" ${sel===c?'selected':''}>${c}</option>`).join('');
+
+                html += `
+                <div class="interviniente-card bg-white border border-gray-200 rounded-xl shadow-md overflow-hidden relative" data-idx="${idx}">
+                    
+                    <!-- HEADER CARD -->
+                    <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3">
+                        <div class="flex items-center gap-4">
+                            <span class="bg-primary text-white w-7 h-7 flex items-center justify-center rounded-full font-bold text-sm shadow-sm">${idx+1}</span>
+                            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                <select class="f-rol bg-white border border-gray-300 rounded px-2 py-1 text-sm font-bold text-gray-700 shadow-sm focus:ring-primary focus:border-primary" onchange="window.triggerCardUpdate()">
+                                    <option value="01" ${int.rol==='01'?'selected':''}>01 - COMPARECIENTE (OTORGADO POR)</option>
+                                    <option value="02" ${int.rol==='02'?'selected':''}>02 - COMPARECIENTE (A FAVOR DE) [Beneficiario]</option>
+                                </select>
+                                <div class="flex bg-white rounded border border-gray-300 overflow-hidden shadow-sm">
+                                    <label class="cursor-pointer px-3 py-1 text-sm border-r border-gray-200 hover:bg-gray-50 flex items-center gap-1 ${isNatural?'bg-blue-50 text-blue-700 font-semibold':'text-gray-600'}">
+                                        <input type="radio" name="nat_${idx}" value="Natural" class="f-nat hidden" ${isNatural?'checked':''} onchange="window.triggerCardUpdate()"> Persona Natural
+                                    </label>
+                                    <label class="cursor-pointer px-3 py-1 text-sm hover:bg-gray-50 flex items-center gap-1 ${!isNatural?'bg-blue-50 text-blue-700 font-semibold':'text-gray-600'}">
+                                        <input type="radio" name="nat_${idx}" value="Juridica" class="f-nat hidden" ${!isNatural?'checked':''} onchange="window.triggerCardUpdate()"> Persona Jurídica
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <button type="button" onclick="removerIntervinienteCard(${idx})" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 shadow-sm">
-                            <i class="far fa-trash-alt"></i> Dar de baja
-                        </button>
+                        <button type="button" onclick="window.removerIntervinienteCard(${idx})" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded text-sm transition-colors border border-transparent hover:border-red-200"><i class="fas fa-trash-alt"></i> Borrar</button>
                     </div>
-                    <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Rol / Tipo</label>
-                            <select class="int-tipo block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow">
-                                <option value="Otorgante" ${int.tipo === 'Otorgante' ? 'selected' : ''}>Otorgante</option>
-                                <option value="Beneficiario" ${int.tipo === 'Beneficiario' ? 'selected' : ''}>Beneficiario</option>
-                            </select>
+
+                    <div class="p-5 space-y-6">
+                        
+                        <!-- SECCIÓN: PERSONA NATURAL -->
+                        <div class="sec-natural space-y-4 ${!isNatural?'hidden':''}">
+                            <div class="flex items-center gap-2 border-b pb-2"><i class="fas fa-user text-gray-400"></i><h5 class="font-bold text-gray-700 text-sm uppercase">Datos Personales</h5></div>
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Tipo ID</label><select class="f-tId w-full border border-gray-300 rounded px-3 py-2 text-sm">${optId(int.tipoId)}</select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Número ID</label><input type="text" class="f-nId w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.numId}"></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Nombre Completo</label><input type="text" class="f-nom w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.nombre}"></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Nacionalidad</label><select class="f-nac w-full border border-gray-300 rounded px-3 py-2 text-sm">${optNac(int.nacionalidad)}</select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Estado Civil</label><select class="f-estC w-full border border-gray-300 rounded px-3 py-2 text-sm">${optCiv(int.estadoCivil)}</select></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Profesión u Ocupación</label><input type="text" class="f-prof w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.profesion}"></div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Provincia</label><select class="f-prov w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="window.updateCanton(this, ${idx}, false)">${optProv(int.provincia)}</select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Cantón</label><select class="f-cant w-full border border-gray-300 rounded px-3 py-2 text-sm">${optCant(int.canton)}</select></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Dirección Detallada</label><input type="text" class="f-dir w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.direccion}" placeholder="Calle, Número, Sector..."></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Teléfono</label><input type="text" class="f-tel w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.telefono}"></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Correo Electrónico</label><input type="email" class="f-eml w-full border border-gray-300 rounded px-3 py-2 text-sm lowercase" value="${int.email}"></div>
+                            </div>
+
+                            <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg mt-4 flex items-center gap-4">
+                                <label class="text-xs font-bold text-amber-800 uppercase">Forma de Comparecencia:</label>
+                                <select class="f-comp bg-white border border-amber-300 rounded px-3 py-1.5 text-sm font-semibold text-gray-700" onchange="window.triggerCardUpdate()">
+                                    <option value="Propios Derechos" ${int.comparecencia==='Propios Derechos'?'selected':''}>Por sus propios derechos</option>
+                                    <option value="Representado" ${int.comparecencia==='Representado'?'selected':''}>Representado por</option>
+                                </select>
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Identificación (Cédula/RUC)</label>
-                            <input type="text" class="int-id block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" value="${int.identificacion || ''}" required>
+
+                        <!-- SECCIÓN: PERSONA JURÍDICA -->
+                        <div class="sec-juridica space-y-4 ${isNatural?'hidden':''}">
+                            <div class="flex items-center gap-2 border-b pb-2"><i class="fas fa-building text-gray-400"></i><h5 class="font-bold text-gray-700 text-sm uppercase">Datos de Persona Jurídica</h5></div>
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Tipo ID</label><select class="f-jTId w-full border border-gray-300 rounded px-3 py-2 text-sm"><option value="R" selected>R - RUC</option></select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Número RUC</label><input type="text" class="f-jNId w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.numId}"></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Nacionalidad</label><select class="f-jNac w-full border border-gray-300 rounded px-3 py-2 text-sm">${optNac(int.nacionalidad)}</select></div>
+                                <div class="col-span-4"><label class="block text-xs font-semibold text-gray-600 mb-1">Razón Social</label><input type="text" class="f-jRS w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.razonSocial}" placeholder="Ej: EMPRESA S.A."></div>
+                            </div>
+                            <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-center gap-4">
+                                <label class="text-xs font-bold text-amber-800 uppercase">Forma de Representación:</label>
+                                <select class="f-jRep bg-white border border-amber-300 rounded px-3 py-1.5 text-sm font-semibold text-gray-700">
+                                    <option value="Representante Legal" ${int.formaRepresentacion==='Representante Legal'?'selected':''}>Representante Legal</option>
+                                    <option value="Apoderado" ${int.formaRepresentacion==='Apoderado'?'selected':''}>Apoderado/a</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Nombre Completo</label>
-                            <input type="text" class="int-nombre block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" value="${int.nombre || ''}" required>
+
+                        <!-- SUBSECCIÓN: REPRESENTANTE (Dinámica) -->
+                        <div class="sec-representante space-y-4 p-4 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/50 ${!hasRep?'hidden':''}">
+                            <div class="flex items-center gap-2 border-b pb-2"><i class="fas fa-id-card-alt text-gray-400"></i><h5 class="font-bold text-gray-700 text-sm uppercase">Datos del Representante</h5></div>
+                            ${isNatural ? `
+                                <div class="mb-3"><label class="block text-xs font-semibold text-gray-600 mb-1">Calidad del Representante</label><select class="f-rCal w-full md:w-1/2 border border-gray-300 rounded px-3 py-2 text-sm"><option value="Apoderado/a Especial" ${int.repCalidad==='Apoderado/a Especial'?'selected':''}>Apoderado/a Especial</option><option value="Apoderado/a General" ${int.repCalidad==='Apoderado/a General'?'selected':''}>Apoderado/a General</option></select></div>
+                            ` : ''}
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Tipo ID</label><select class="f-rTId w-full border border-gray-300 rounded px-3 py-2 text-sm">${optId(int.repTipoId)}</select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Número ID</label><input type="text" class="f-rNId w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.repNumId}"></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Nombre Completo</label><input type="text" class="f-rNom w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.repNombre}"></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Nacionalidad</label><select class="f-rNac w-full border border-gray-300 rounded px-3 py-2 text-sm">${optNac(int.repNacionalidad)}</select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Estado Civil</label><select class="f-rEstC w-full border border-gray-300 rounded px-3 py-2 text-sm">${optCiv(int.repEstadoCivil)}</select></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Profesión</label><input type="text" class="f-rProf w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.repProfesion}"></div>
+                                
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Provincia</label><select class="f-rProv w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="window.updateCanton(this, ${idx}, true)">${optProv(int.repProvincia)}</select></div>
+                                <div class="col-span-1"><label class="block text-xs font-semibold text-gray-600 mb-1">Cantón</label><select class="f-rCant w-full border border-gray-300 rounded px-3 py-2 text-sm">${optCantRep(int.repCanton)}</select></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Dirección Detallada</label><input type="text" class="f-rDir w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.repDireccion}"></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Teléfono</label><input type="text" class="f-rTel w-full border border-gray-300 rounded px-3 py-2 text-sm" value="${int.repTelefono}"></div>
+                                <div class="col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Correo</label><input type="email" class="f-rEml w-full border border-gray-300 rounded px-3 py-2 text-sm lowercase" value="${int.repEmail}"></div>
+                            </div>
                         </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-semibold text-gray-700 mb-1.5">Nacionalidad</label>
-                            <input type="text" class="int-nacionalidad block w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-shadow" value="${int.nacionalidad || 'Ecuatoriana'}" required>
+
+                        <!-- SECCIÓN: BENEFICIARIO (UAFE EXTRA) -->
+                        <div class="sec-beneficiario space-y-4 p-4 rounded-lg border-2 border-indigo-100 bg-indigo-50/30 ${!isBeneficiario?'hidden':''}">
+                            <div class="flex items-center gap-2 border-b border-indigo-200 pb-2"><i class="fas fa-briefcase text-indigo-500"></i><h5 class="font-bold text-indigo-800 text-sm uppercase">Información Laboral, Económica y PEP (Obligatorio UAFE)</h5></div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Situación Laboral</label>
+                                    <select class="f-bSit w-full border border-gray-300 rounded px-3 py-2 text-sm" onchange="window.triggerCardUpdate()">
+                                        <option value="Dependencia" ${int.sitLaboral==='Dependencia'?'selected':''}>Trabaja bajo relación de dependencia</option>
+                                        <option value="Independiente" ${int.sitLaboral==='Independiente'?'selected':''}>Trabaja de forma independiente</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-2 ${int.sitLaboral!=='Dependencia'?'opacity-30 pointer-events-none':''}">
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Tipo de Empleador</label>
+                                    <select class="f-bTEmp w-full border border-gray-300 rounded px-3 py-2 text-sm" ${int.sitLaboral!=='Dependencia'?'disabled':''}>
+                                        <option value="Privado" ${int.tipoEmp==='Privado'?'selected':''}>Privado</option>
+                                        <option value="Público" ${int.tipoEmp==='Público'?'selected':''}>Público</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-2 ${int.sitLaboral!=='Dependencia'?'opacity-30 pointer-events-none':''}">
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Lugar de Trabajo (Empresa/Institución)</label>
+                                    <input type="text" class="f-bLug w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.lugarTrabajo}" ${int.sitLaboral!=='Dependencia'?'disabled':''}>
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Puesto / Cargo que ocupa</label>
+                                    <input type="text" class="f-bCar w-full border border-gray-300 rounded px-3 py-2 text-sm uppercase" value="${int.cargo}">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Ingreso Mensual Aprox. (USD)</label>
+                                    <div class="relative"><span class="absolute left-3 top-2 text-gray-500 font-bold">$</span><input type="number" step="0.01" class="f-bIng w-full border border-gray-300 rounded py-2 pl-7 pr-3 text-sm" value="${int.ingresos}" placeholder="0.00"></div>
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-xs font-bold text-red-600 mb-1">¿Es Persona Políticamente Expuesta (PEP)?</label>
+                                    <select class="f-bPep w-full border border-red-300 rounded px-3 py-2 text-sm font-semibold bg-red-50 text-red-800 focus:ring-red-500">
+                                        <option value="No" ${int.isPEP==='No'?'selected':''}>NO - No es PEP</option>
+                                        <option value="Si" ${int.isPEP==='Si'?'selected':''}>SÍ - Es PEP</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            });
+            container.innerHTML = html;
         };
 
-        window.agregarIntervinienteCard = function() {
-            window.syncIntervinientesForm(); 
-            window._tempEditIntervinientes.push({ tipo: 'Otorgante', identificacion: '', nombre: '', nacionalidad: 'Ecuatoriana' });
+        window.updateCanton = function(selectElem, idx, isRep) {
+            window.syncIntervinientesForm(); // Save current work
+            const prov = selectElem.value;
+            const cantones = DIC_PROVINCIAS[prov] || [];
+            if (isRep) {
+                window._tempEditIntervinientes[idx].repProvincia = prov;
+                window._tempEditIntervinientes[idx].repCanton = cantones[0] || '';
+            } else {
+                window._tempEditIntervinientes[idx].provincia = prov;
+                window._tempEditIntervinientes[idx].canton = cantones[0] || '';
+            }
+            window.renderIntervinientesCards();
+        }
+
+        window.triggerCardUpdate = function() {
+            window.syncIntervinientesForm();
             window.renderIntervinientesCards();
         };
 
+        window.syncIntervinientesForm = function() {
+            const container = document.getElementById('edit_intervinientes_list');
+            if(!container) return;
+            const cards = container.querySelectorAll('.interviniente-card');
+            
+            window._tempEditIntervinientes = Array.from(cards).map(card => {
+                const isNat = card.querySelector('.f-nat:checked').value === 'Natural';
+                return {
+                    rol: card.querySelector('.f-rol').value,
+                    naturaleza: isNat ? 'Natural' : 'Juridica',
+                    
+                    // Natural
+                    tipoId: card.querySelector('.f-tId')?.value || 'C',
+                    numId: isNat ? card.querySelector('.f-nId').value : card.querySelector('.f-jNId').value,
+                    nombre: isNat ? card.querySelector('.f-nom').value : '',
+                    nacionalidad: isNat ? card.querySelector('.f-nac').value : card.querySelector('.f-jNac').value,
+                    estadoCivil: card.querySelector('.f-estC')?.value || '',
+                    profesion: card.querySelector('.f-prof')?.value || '',
+                    provincia: card.querySelector('.f-prov')?.value || '',
+                    canton: card.querySelector('.f-cant')?.value || '',
+                    direccion: card.querySelector('.f-dir')?.value || '',
+                    telefono: card.querySelector('.f-tel')?.value || '',
+                    email: card.querySelector('.f-eml')?.value || '',
+                    comparecencia: card.querySelector('.f-comp')?.value || 'Propios Derechos',
+                    
+                    // Juridica
+                    razonSocial: card.querySelector('.f-jRS')?.value || '',
+                    formaRepresentacion: card.querySelector('.f-jRep')?.value || '',
+
+                    // Representante
+                    repCalidad: card.querySelector('.f-rCal')?.value || '',
+                    repTipoId: card.querySelector('.f-rTId')?.value || 'C',
+                    repNumId: card.querySelector('.f-rNId')?.value || '',
+                    repNombre: card.querySelector('.f-rNom')?.value || '',
+                    repNacionalidad: card.querySelector('.f-rNac')?.value || 'Ecuatoriana',
+                    repEstadoCivil: card.querySelector('.f-rEstC')?.value || 'Soltero/a',
+                    repProvincia: card.querySelector('.f-rProv')?.value || '',
+                    repCanton: card.querySelector('.f-rCant')?.value || '',
+                    repDireccion: card.querySelector('.f-rDir')?.value || '',
+                    repProfesion: card.querySelector('.f-rProf')?.value || '',
+                    repTelefono: card.querySelector('.f-rTel')?.value || '',
+                    repEmail: card.querySelector('.f-rEml')?.value || '',
+
+                    // Beneficiario
+                    sitLaboral: card.querySelector('.f-bSit')?.value || '',
+                    tipoEmp: card.querySelector('.f-bTEmp')?.value || '',
+                    lugarTrabajo: card.querySelector('.f-bLug')?.value || '',
+                    cargo: card.querySelector('.f-bCar')?.value || '',
+                    ingresos: card.querySelector('.f-bIng')?.value || '',
+                    isPEP: card.querySelector('.f-bPep')?.value || 'No'
+                };
+            });
+        };
+
         window.removerIntervinienteCard = function(idx) {
-            Swal.fire({
-                title: '¿Dar de baja?',
-                text: "Se eliminará este interviniente del formulario.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, dar de baja',
-                cancelButtonText: 'Cancelar'
-            }).then((result) => {
+            Swal.fire({ title: '¿Borrar compareciente?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, borrar' })
+            .then((result) => {
                 if (result.isConfirmed) {
-                    window.syncIntervinientesForm(); 
+                    window.syncIntervinientesForm();
                     window._tempEditIntervinientes.splice(idx, 1);
                     window.renderIntervinientesCards();
                 }
@@ -803,824 +990,256 @@
             e.preventDefault();
             window.syncIntervinientesForm(); 
 
+            // Validacion básica
             let isValid = true;
             for(let int of window._tempEditIntervinientes) {
-                if(!int.identificacion || !int.nombre || !int.nacionalidad) isValid = false;
+                if(!int.numId) isValid = false;
+                if(int.naturaleza === 'Natural' && !int.nombre) isValid = false;
+                if(int.naturaleza === 'Juridica' && !int.razonSocial) isValid = false;
             }
-            if(!isValid) {
-                Swal.fire('Campos Incompletos', 'Por favor, complete todos los campos obligatorios de los intervinientes.', 'warning');
-                return;
-            }
+            if(!isValid) { Swal.fire('Incompleto', 'Se requiere al menos Número de ID y Nombre/Razón Social en todos los comparecientes.', 'warning'); return; }
 
-            Swal.fire({ title: 'Guardando Cambios...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-
-            const actoIndex = LOCAL_DB.actos.findIndex(a => a.id === actoId);
-            if(actoIndex === -1) return;
+            Swal.fire({ title: 'Guardando...', didOpen: () => { Swal.showLoading() } });
 
             const updateData = {
                 numero: document.getElementById('edit_numero').value,
                 fecha: document.getElementById('edit_fecha').value,
+                moneda: document.getElementById('edit_moneda').value,
                 cuantia: document.getElementById('edit_cuantia').value,
                 forma_pago: document.getElementById('edit_forma_pago').value,
+                clase_bien: document.getElementById('edit_clase_bien').value,
+                tipo_bien: document.getElementById('edit_tipo_bien').value,
                 intervinientes: window._tempEditIntervinientes
             };
 
             try {
                 await db.collection('actos').doc(actoId).update(updateData);
-                LOCAL_DB.actos[actoIndex] = { ...LOCAL_DB.actos[actoIndex], ...updateData };
+                const aIdx = LOCAL_DB.actos.findIndex(a => a.id === actoId);
+                if(aIdx !== -1) LOCAL_DB.actos[aIdx] = { ...LOCAL_DB.actos[aIdx], ...updateData };
                 
                 closeModal();
-                Swal.fire({ icon: 'success', title: 'Actualizado', text: 'El acto y sus intervinientes fueron guardados.', timer: 2000, showConfirmButton: false });
+                Swal.fire({ icon: 'success', title: 'Acto Actualizado', timer: 1500, showConfirmButton: false });
                 if (state.currentView === 'actos') renderActosTable();
-            } catch (error) {
-                Swal.fire('Error', 'No se pudo actualizar el registro en la nube.', 'error');
-            }
+            } catch (error) { Swal.fire('Error', 'No se pudo guardar la edición.', 'error'); }
         }
 
+        // --- DESCARGA DE FORMULARIO TXT ---
         function descargarFormulario(actoId) {
             const acto = LOCAL_DB.actos.find(a => a.id === actoId);
             if(!acto) return;
-            const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
-
-            let contenido = `====================================================\n`;
-            contenido += `           FORMULARIO DE TRÁMITE NOTARIAL           \n`;
-            contenido += `====================================================\n\n`;
-            contenido += `DATOS DEL ACTO\n`;
-            contenido += `----------------------------------------------------\n`;
-            contenido += `ID Sistema:        ${seqStr}\n`;
-            contenido += `Número de Trámite: ${acto.numero || 'Pendiente'}\n`;
-            contenido += `Tipo de Trámite:   ${acto.tipo}\n`;
-            contenido += `Categoría:         ${acto.categoria}\n`;
-            contenido += `Fecha:             ${acto.fecha}\n`;
-            contenido += `Cuantía:           $ ${acto.cuantia || '0.00'}\n`;
-            contenido += `Forma de Pago:     ${acto.forma_pago || 'No especificada'}\n`;
-            contenido += `Creado Por:        ${acto.creadoPorNombre || 'No registrado'}\n\n`;
-            
-            contenido += `INTERVINIENTES\n`;
-            contenido += `----------------------------------------------------\n`;
-            if (acto.intervinientes.length === 0) {
-                contenido += `No hay intervinientes registrados.\n`;
-            } else {
-                acto.intervinientes.forEach((int, i) => {
-                    contenido += `[${i+1}] ${int.tipo.toUpperCase()}\n`;
-                    contenido += `    Nombre:         ${int.nombre}\n`;
-                    contenido += `    Identificación: ${int.identificacion}\n`;
-                    contenido += `    Nacionalidad:   ${int.nacionalidad}\n\n`;
-                });
-            }
-            contenido += `====================================================\n`;
-
-            const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Formulario_${seqStr}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            let c = `======= FORMULARIO DE TRÁMITE =======\nID: Acto-${String(acto.secuencial).padStart(5,'0')}\nFecha: ${acto.fecha}\nCategoría: ${acto.categoria}\n\n--- INTERVINIENTES ---\n`;
+            acto.intervinientes.forEach((i, idx) => {
+                c += `[${idx+1}] ROL: ${i.rol === '01' ? 'Otorgante' : 'Beneficiario'}\n`;
+                if(i.naturaleza === 'Natural') c += `Nombre: ${i.nombre}\nID: ${i.numId}\n`;
+                else c += `Razón Social: ${i.razonSocial}\nRUC: ${i.numId}\nRepresentado por: ${i.repNombre} (${i.repNumId})\n`;
+                c += `\n`;
+            });
+            const url = URL.createObjectURL(new Blob([c], { type: 'text/plain' }));
+            const a = document.createElement('a'); a.href = url; a.download = `Acto-${acto.secuencial}.txt`; a.click();
         }
 
         function eliminarActo(actoId) {
-            Swal.fire({
-                title: '¿Eliminar acto?',
-                text: "Esta acción lo borrará permanentemente de la nube.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, eliminar',
-                cancelButtonText: 'Cancelar'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    Swal.fire({ title: 'Eliminando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
+            Swal.fire({ title: '¿Eliminar Acto?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' })
+            .then(async (res) => {
+                if (res.isConfirmed) {
+                    Swal.fire({ title: 'Eliminando...', didOpen: () => { Swal.showLoading() } });
                     try {
                         await db.collection('actos').doc(actoId).delete();
                         LOCAL_DB.actos = LOCAL_DB.actos.filter(a => a.id !== actoId);
-                        if (state.currentView === 'actos') renderActosTable();
-                        Swal.fire('Eliminado!', 'El acto ha sido eliminado.', 'success');
-                    } catch (error) {
-                        Swal.fire('Error', 'No se pudo eliminar el registro.', 'error');
-                    }
+                        renderActosTable();
+                        Swal.fire('Eliminado', '', 'success');
+                    } catch (e) { Swal.fire('Error', '', 'error'); }
                 }
             });
         }
 
-        function getHistorialCedulas() {
-            return JSON.parse(localStorage.getItem('historialCedulasJudicial')) || [];
-        }
 
-        function guardarCedulaEnHistorial(cedula) {
-            let historial = getHistorialCedulas().filter(c => c !== cedula);
-            historial.unshift(cedula);
-            historial = historial.slice(0, 8);
-            localStorage.setItem('historialCedulasJudicial', JSON.stringify(historial));
-            return historial;
-        }
-
-        function getConsultasHTML() {
-            const fuentes = LOCAL_DB.fuentesConsulta;
-            const esSuperAdmin = state.currentUser.role === 1;
-
-            if (!state.consultaTabActivaId && fuentes.length > 0) {
-                state.consultaTabActivaId = fuentes[0].id;
-            }
-
-            const tabsHtml = fuentes.map(f => `
-                <div class="flex items-center gap-1 flex-shrink-0">
-                    <button onclick="seleccionarFuenteConsulta('${f.id}')"
-                        class="px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${state.consultaTabActivaId === f.id ? 'dyn-border-primary dyn-text-primary bg-white' : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-100'}"
-                        title="${f.url}">
-                        ${f.nombre}
-                    </button>
-                    ${esSuperAdmin ? `
-                    <button onclick="eliminarFuenteConsulta('${f.id}')" class="text-gray-400 hover:text-red-600 transition-colors px-1" title="Eliminar página">
-                        <i class="fas fa-times text-xs"></i>
-                    </button>
-                    ` : ''}
-                </div>
-            `).join('');
-
-            return `
-                <div class="h-full flex flex-col space-y-4">
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1"><i class="fas fa-gavel dyn-text-primary mr-2"></i> Consultas Externas (Due Diligence)</h2>
-                        <p class="text-sm text-gray-500 mb-4">Ingresa la cédula/RUC, cópiala y navega entre las pestañas para buscar en cada fuente gubernamental.</p>
-                        <div class="flex flex-wrap items-end gap-3">
-                            <div class="flex-1 min-w-[220px]">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Número de Cédula / RUC</label>
-                                <input type="text" id="consulta_cedula_input" placeholder="Ej: 1712345678" maxlength="13"
-                                    class="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none dyn-border-primary sm:text-sm shadow-sm">
-                            </div>
-                            <button type="button" onclick="copiarCedulaActual()" class="px-4 py-2 text-white rounded-lg hover:opacity-90 transition-colors font-medium dyn-bg-primary flex items-center gap-2 h-[38px] shadow-sm">
-                                <i class="fas fa-copy"></i> Copiar
-                            </button>
-                            ${esSuperAdmin ? `
-                            <button type="button" onclick="mostrarFormAgregarFuente()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium flex items-center gap-2 h-[38px] shadow-sm">
-                                <i class="fas fa-plus"></i> Agregar página
-                            </button>
-                            ` : ''}
-                        </div>
-                        <div id="consulta_historial_lista" class="flex flex-wrap gap-2 mt-3"></div>
-                        <div id="fuente-form-nueva" class="hidden mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
-                            <input type="text" id="nueva_fuente_nombre" placeholder="Nombre (Ej: SRI - Consulta RUC)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                            <input type="text" id="nueva_fuente_url" placeholder="URL completa (https://...)" class="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                            <div class="flex justify-end gap-2">
-                                <button type="button" onclick="document.getElementById('fuente-form-nueva').classList.add('hidden')" class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-200 rounded">Cancelar</button>
-                                <button type="button" onclick="agregarFuenteConsulta()" class="px-3 py-1.5 text-sm text-white rounded-lg dyn-bg-primary">Guardar página</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden min-h-0">
-                        ${fuentes.length === 0
-                            ? `<div class="flex-1 flex items-center justify-center text-gray-400 text-sm">No hay páginas configuradas todavía.</div>`
-                            : `
-                            <div class="flex gap-1 px-2 pt-2 border-b border-gray-200 overflow-x-auto flex-shrink-0">${tabsHtml}</div>
-                            <div id="consulta_visor_container" class="flex-1 min-h-0 relative"></div>
-                            `
-                        }
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderConsultasViewer() {
-            const historial = getHistorialCedulas();
-            const historialContainer = document.getElementById('consulta_historial_lista');
-            if (historialContainer) {
-                historialContainer.innerHTML = historial.length === 0 ? '' : historial.map(c => `
-                    <button type="button" onclick="document.getElementById('consulta_cedula_input').value='${c}'" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-md text-xs font-medium text-gray-700 transition-colors border border-gray-200">
-                        ${c}
-                    </button>
-                `).join('');
-            }
-
-            const visorContainer = document.getElementById('consulta_visor_container');
-            if (!visorContainer) return;
-
-            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === state.consultaTabActivaId);
-            if (!fuente) {
-                visorContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">Selecciona una página.</div>`;
-                return;
-            }
-
-            visorContainer.innerHTML = `
-                <iframe src="${fuente.url}" class="absolute inset-0 w-full h-full border-0 bg-gray-50" id="consulta_iframe"></iframe>
-                <div class="absolute bottom-3 right-3 bg-white shadow-lg border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-gray-600">
-                    <span>¿No carga? Algunos sitios bloquean mostrarse embebidos.</span>
-                    <button onclick="abrirFuenteEnVentana('${fuente.id}')" class="px-2.5 py-1.5 dyn-bg-primary text-white rounded-md font-medium whitespace-nowrap hover:opacity-90 shadow-sm">Abrir aparte</button>
-                </div>
-            `;
-        }
-
-        function seleccionarFuenteConsulta(id) {
-            state.consultaTabActivaId = id;
-            if (state.currentView === 'consultas') {
-                const content = document.getElementById('main-content');
-                content.innerHTML = getConsultasHTML();
-                renderConsultasViewer();
-            }
-        }
-
-        function abrirFuenteEnVentana(id) {
-            const fuente = LOCAL_DB.fuentesConsulta.find(f => f.id === id);
-            if (!fuente) return;
-            const w = 1000, h = 800;
-            const left = (screen.width / 2) - (w / 2);
-            const top = (screen.height / 2) - (h / 2);
-            const ventana = window.open(fuente.url, 'consultaExterna_' + fuente.id, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
-            if (ventana) ventana.focus();
-        }
-
-        async function copiarCedulaActual() {
-            const input = document.getElementById('consulta_cedula_input');
-            const cedula = input.value.trim();
-            if (!cedula) {
-                Swal.fire('Falta la cédula', 'Ingresa un número de cédula antes de continuar.', 'warning');
-                return;
-            }
-            try { await navigator.clipboard.writeText(cedula); } catch (e) {}
-            guardarCedulaEnHistorial(cedula);
-            renderConsultasViewer();
-            Swal.fire({ icon: 'success', title: 'Copiada', text: 'Pégala (Ctrl+V) en la página activa para buscar.', timer: 2000, showConfirmButton: false });
-        }
-
-        function mostrarFormAgregarFuente() {
-            document.getElementById('fuente-form-nueva').classList.remove('hidden');
-        }
-
-        async function agregarFuenteConsulta() {
-            if (state.currentUser.role !== 1) return;
-            const nombre = document.getElementById('nueva_fuente_nombre').value.trim();
-            const url = document.getElementById('nueva_fuente_url').value.trim();
-            if (!nombre || !/^https?:\/\/.+/.test(url)) {
-                Swal.fire('Datos incompletos', 'Ingresa un nombre y una URL válida.', 'warning');
-                return;
-            }
-            Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-            try {
-                const fuenteData = { nombre, url };
-                const docRef = await db.collection('fuentesConsulta').add(fuenteData);
-                LOCAL_DB.fuentesConsulta.push({ id: docRef.id, ...fuenteData });
-                state.consultaTabActivaId = docRef.id;
-                document.getElementById('main-content').innerHTML = getConsultasHTML();
-                renderConsultasViewer();
-                Swal.close();
-            } catch (error) {
-                Swal.fire('Error', 'No se pudo guardar la página.', 'error');
-            }
-        }
-
-        async function eliminarFuenteConsulta(id) {
-            if (state.currentUser.role !== 1) return;
-            Swal.fire({ title: '¿Eliminar Pestaña?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí' })
-            .then(async (result) => {
-                if (result.isConfirmed) {
-                    try {
-                        await db.collection('fuentesConsulta').doc(id).delete();
-                        LOCAL_DB.fuentesConsulta = LOCAL_DB.fuentesConsulta.filter(f => f.id !== id);
-                        if (state.consultaTabActivaId === id) state.consultaTabActivaId = LOCAL_DB.fuentesConsulta.length > 0 ? LOCAL_DB.fuentesConsulta[0].id : null;
-                        document.getElementById('main-content').innerHTML = getConsultasHTML();
-                        renderConsultasViewer();
-                    } catch (error) {}
-                }
-            });
-        }
-
+        // --- MODULO DE REPORTES ---
         function getReportesHTML() {
-            let notariaSelector = '';
+            let ns = '';
             if (state.currentUser.role === 1) {
-                notariaSelector = `
-                    <div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-                        <label class="font-medium text-gray-700">Seleccionar Notaría:</label>
-                        <select id="filtro_notaria" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none dyn-border-primary" onchange="cambiarFiltroReportes(this.value)">
-                            <option value="">Todas las Notarías (Consolidado)</option>
-                            ${LOCAL_DB.notarias.map(n => `<option value="${n.id}" ${state.filtroNotariaReporte === n.id ? 'selected':''}>${n.nombre}</option>`).join('')}
-                        </select>
-                    </div>
-                `;
+                ns = `<div class="mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4"><label>Seleccionar Notaría:</label>
+                      <select class="border border-gray-300 rounded px-3 py-1 text-sm" onchange="cambiarFiltroReportes(this.value)">
+                      <option value="">Todas (Consolidado)</option>${LOCAL_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('')}</select></div>`;
             }
-
-            return `
-                <div class="space-y-6">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
-                        <div>
-                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-file-excel text-green-600 mr-2"></i> Generación de Reportes</h2>
-                            <p class="text-sm text-gray-500">Visualización tabular estructurada lista para descargar.</p>
-                        </div>
-                        <div class="flex gap-2 flex-wrap">
-                            <button onclick="exportarExcel('TODO')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors text-sm">
-                                <i class="fas fa-file-excel"></i> Descargar Todo
-                            </button>
-                            <button onclick="exportarExcel('INT')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors text-sm">
-                                <i class="fas fa-users"></i> Descargar INT
-                            </button>
-                            <button onclick="exportarExcel('TRA')" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors text-sm">
-                                <i class="fas fa-file-signature"></i> Descargar TRA
-                            </button>
-                        </div>
-                    </div>
-
-                    ${notariaSelector}
-
-                    <div class="border-b border-gray-200">
-                        <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-                            <button onclick="switchReportTab('protocolos')" id="tab-protocolos" class="dyn-border-primary dyn-text-primary whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                                1. Protocolos
-                            </button>
-                            <button onclick="switchReportTab('vehiculos')" id="tab-vehiculos" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                                2. Rec. de Firmas de Vehículo
-                            </button>
-                            <button onclick="switchReportTab('contratos')" id="tab-contratos" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
-                                3. Rec. de Firmas de Contrato
-                            </button>
-                        </nav>
-                    </div>
-
-                    <div id="reporte-container" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    </div>
-                </div>
-            `;
+            return `<div class="space-y-6">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between"><h2 class="text-xl font-bold"><i class="fas fa-file-excel text-green-600 mr-2"></i> Reportes</h2><button onclick="exportarExcel('TODO')" class="bg-green-600 text-white px-4 py-2 rounded shadow-sm text-sm font-medium"><i class="fas fa-download mr-1"></i> Bajar Excel</button></div>
+                ${ns}
+                <div id="reporte-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center text-gray-500">Vista preliminar simplificada. Presione "Bajar Excel" para obtener el formato completo de todos los actos.</div>
+            </div>`;
         }
-
-        function getActosFiltradosReporte() {
-            let actosFiltrados = LOCAL_DB.actos;
-            if (state.currentUser.role === 2) {
-                actosFiltrados = actosFiltrados.filter(a => a.notariaId === state.currentUser.notariaId);
-            } else if (state.currentUser.role === 1 && state.filtroNotariaReporte) {
-                actosFiltrados = actosFiltrados.filter(a => a.notariaId === state.filtroNotariaReporte);
-            }
-
-            if (currentReportTab === 'protocolos') {
-                return actosFiltrados.filter(a => a.tipo === 'Protocolo');
-            } else if (currentReportTab === 'vehiculos') {
-                return actosFiltrados.filter(a => a.categoria === 'Reconocimiento de firmas de vehículo');
-            } else if (currentReportTab === 'contratos') {
-                return actosFiltrados.filter(a => a.categoria === 'Reconocimiento de firmas de contrato');
-            }
-            return actosFiltrados;
-        }
-
-        function exportarExcel(tipo) {
-            const actosFiltrados = getActosFiltradosReporte();
-            if (actosFiltrados.length === 0) { Swal.fire('Info', 'No hay datos para exportar.', 'info'); return; }
-
-            let wb = XLSX.utils.book_new(); let ws;
-
-            if (tipo === 'TODO') {
-                const table = document.getElementById('tabla-reporte-datos');
-                if (!table) return;
-                ws = XLSX.utils.table_to_sheet(table, {sheet: currentReportTab});
-                XLSX.utils.book_append_sheet(wb, ws, currentReportTab);
-            } 
-            else if (tipo === 'INT') {
-                let data = [];
-                actosFiltrados.forEach(a => {
-                    const seqStr = `Acto-${String(a.secuencial || 0).padStart(5, '0')}`;
-                    if (a.intervinientes.length === 0) {
-                        data.push({ "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Interviniente": "SIN REGISTROS" });
-                    } else {
-                        a.intervinientes.forEach(int => {
-                            data.push({ "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Calidad": int.tipo, "Nombre": int.nombre, "Identificación": int.identificacion, "Nacionalidad": int.nacionalidad });
-                        });
-                    }
-                });
-                ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, 'Intervinientes');
-            }
-            else if (tipo === 'TRA') {
-                let data = actosFiltrados.map(a => {
-                    const seqStr = `Acto-${String(a.secuencial || 0).padStart(5, '0')}`;
-                    return { "ID Sistema": seqStr, "Nº Trámite": a.numero || "Pendiente", "Tipo": a.tipo, "Categoría": a.categoria, "Fecha": a.fecha, "Cuantía": a.cuantia, "Forma Pago": a.forma_pago };
-                });
-                ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, 'Trámites');
-            }
+        function cambiarFiltroReportes(v) { state.filtroNotariaReporte = v || null; }
+        function exportarExcel() {
+            let datos = LOCAL_DB.actos;
+            if (state.currentUser.role === 2) datos = datos.filter(a => a.notariaId === state.currentUser.notariaId);
+            else if (state.currentUser.role === 1 && state.filtroNotariaReporte) datos = datos.filter(a => a.notariaId === state.filtroNotariaReporte);
             
-            XLSX.writeFile(wb, `Reporte_${tipo}_${currentReportTab}_${new Date().toISOString().slice(0,10)}.xlsx`);
-            Swal.fire({ icon: 'success', title: 'Descarga Iniciada', timer: 2000, showConfirmButton: false });
+            if(datos.length === 0) { Swal.fire('Vacio','No hay datos','info'); return; }
+            let filas = datos.map(a => ({ "ID": a.secuencial, "Fecha": a.fecha, "Categoría": a.categoria, "Nº Intervinientes": a.intervinientes.length }));
+            let wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(filas);
+            XLSX.utils.book_append_sheet(wb, ws, "Datos"); XLSX.writeFile(wb, `Reporte.xlsx`);
         }
 
-        function cambiarFiltroReportes(val) { state.filtroNotariaReporte = val || null; renderReportesTables(); }
-
-        let currentReportTab = 'protocolos';
-        function switchReportTab(tab) {
-            currentReportTab = tab;
-            ['protocolos', 'vehiculos', 'contratos'].forEach(t => {
-                const el = document.getElementById(`tab-${t}`);
-                if(t === tab) { el.classList.remove('border-transparent', 'text-gray-500'); el.classList.add('dyn-border-primary', 'dyn-text-primary'); } 
-                else { el.classList.add('border-transparent', 'text-gray-500'); el.classList.remove('dyn-border-primary', 'dyn-text-primary'); }
-            });
-            renderReportesTables();
-        }
-
-        function renderReportesTables() {
-            const container = document.getElementById('reporte-container');
-            if(!container) return;
-            const actosFiltrados = getActosFiltradosReporte();
-            if (actosFiltrados.length === 0) {
-                container.innerHTML = `<div class="p-10 text-center text-gray-500"><i class="fas fa-folder-open text-4xl mb-3 opacity-30"></i><p>No hay datos.</p></div>`; return;
-            }
-
-            let html = `
-                <div class="overflow-x-auto max-h-[60vh] custom-scrollbar">
-                    <table id="tabla-reporte-datos" class="min-w-full text-sm border-collapse excel-table">
-                        <thead class="bg-gray-100 sticky top-0 shadow-sm z-10">
-                            <tr>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">ID</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Trámite</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200 min-w-[200px]">Nombre del Acto</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Fecha</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Interviniente</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Calidad</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Identificación</th>
-                                <th class="border border-gray-300 p-2 text-left font-semibold text-gray-700 bg-gray-200">Nacionalidad</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white">`;
-
-            actosFiltrados.forEach(acto => {
-                const seqStr = 'Acto-' + String(acto.secuencial || 0).padStart(5, '0');
-                let intervinientes = [...acto.intervinientes].sort((a, b) => (a.tipo==='Otorgante'&&b.tipo==='Beneficiario'?-1:a.tipo==='Beneficiario'&&b.tipo==='Otorgante'?1:0));
-
-                if (intervinientes.length === 0) {
-                    html += `<tr class="hover:bg-gray-50"><td class="border border-gray-200 p-2">${seqStr}</td><td class="border border-gray-200 p-2">${acto.numero||'-'}</td><td class="border border-gray-200 p-2">${acto.categoria}</td><td class="border border-gray-200 p-2">${acto.fecha}</td><td class="border border-gray-200 p-2 text-gray-400 italic text-center" colspan="4">Sin intervinientes</td></tr>`;
-                } else {
-                    const rowSpan = intervinientes.length;
-                    html += `<tr class="hover:bg-gray-50"><td class="border border-gray-200 p-2 font-semibold" rowspan="${rowSpan}">${seqStr}</td><td class="border border-gray-200 p-2" rowspan="${rowSpan}">${acto.numero||'-'}</td><td class="border border-gray-200 p-2" rowspan="${rowSpan}">${acto.categoria}</td><td class="border border-gray-200 p-2" rowspan="${rowSpan}">${acto.fecha}</td>`;
-                    intervinientes.forEach((int, index) => {
-                        if (index > 0) html += `<tr class="hover:bg-gray-50">`;
-                        html += `<td class="border border-gray-200 p-2">${int.nombre}</td><td class="border border-gray-200 p-2 text-xs uppercase">${int.tipo}</td><td class="border border-gray-200 p-2 font-mono text-xs">${int.identificacion}</td><td class="border border-gray-200 p-2">${int.nacionalidad}</td></tr>`;
-                    });
-                }
-            });
-            html += `</tbody></table></div>`;
-            container.innerHTML = html;
-        }
-
+        // --- MODULO DE USUARIOS ---
         function getUsuariosHTML() {
             if (state.currentUser.role === 3) return `<p class="text-red-500">Acceso denegado.</p>`;
-            
-            const esSuperAdmin = state.currentUser.role === 1;
-            let tabsHtml = '';
-            
-            if (esSuperAdmin) {
-                tabsHtml = `
-                    <div class="border-b border-gray-200 mb-6">
-                        <nav class="-mb-px flex space-x-8">
-                            <button onclick="switchAdminTab('usuarios')" class="${state.adminTabActiva === 'usuarios' ? 'border-[#1e3a8a] text-[#1e3a8a]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors">
-                                <i class="fas fa-users mr-2"></i> Usuarios del Sistema
-                            </button>
-                            <button onclick="switchAdminTab('notarias')" class="${state.adminTabActiva === 'notarias' ? 'border-[#1e3a8a] text-[#1e3a8a]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors">
-                                <i class="fas fa-building mr-2"></i> Gestión de Notarías (Tenants)
-                            </button>
-                        </nav>
+            const isSuper = state.currentUser.role === 1;
+            let html = `
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex justify-between items-center">
+                    <h2 class="text-xl font-bold"><i class="fas fa-users-cog text-purple-600 mr-2"></i> Gestión de Usuarios y Notarías</h2>
+                    <div class="flex gap-2">
+                        ${isSuper ? `<button onclick="openNotariaModal()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium"><i class="fas fa-building mr-1"></i> Nueva Notaría</button>` : ''}
+                        <button onclick="openNuevoUsuarioModal()" class="bg-purple-600 text-white px-4 py-2 rounded text-sm font-medium"><i class="fas fa-user-plus mr-1"></i> Nuevo Usuario</button>
                     </div>
-                `;
+                </div>
+            `;
+            if (isSuper) {
+                html += `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                        <div class="bg-gray-50 px-4 py-3 border-b font-bold text-gray-700">Notarías (Tenants)</div>
+                        <ul class="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                            ${LOCAL_DB.notarias.map(n => `<li class="p-3 flex justify-between"><span class="text-sm font-medium">${n.nombre}</span><button onclick="borrarNotaria('${n.id}')" class="text-red-500 hover:bg-red-50 px-2 rounded"><i class="fas fa-trash"></i></button></li>`).join('')}
+                        </ul>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                        <div class="bg-gray-50 px-4 py-3 border-b font-bold text-gray-700">Usuarios Globales</div>
+                        <ul class="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                            ${LOCAL_DB.users.filter(u=>u.role===1).map(u => `<li class="p-3"><span class="text-sm font-bold">${u.nombre}</span> <span class="text-xs bg-red-100 text-red-800 px-1 rounded ml-2">SuperAdmin</span><br><span class="text-xs text-gray-500">@${u.username}</span></li>`).join('')}
+                        </ul>
+                    </div>
+                </div><h3 class="font-bold text-gray-700 mt-6 mb-3">Usuarios de Notarías</h3>`;
             }
+            
+            let usrFiltrados = LOCAL_DB.users.filter(u => u.role !== 1);
+            if (state.currentUser.role === 2) usrFiltrados = usrFiltrados.filter(u => u.notariaId === state.currentUser.notariaId);
 
-            let mainContentHtml = '';
-
-            if (state.adminTabActiva === 'usuarios' || !esSuperAdmin) {
-                mainContentHtml = `
-                    <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
-                        <div>
-                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-users-cog text-purple-600 mr-2"></i> Gestión de Usuarios</h2>
-                            <p class="text-sm text-gray-500">Administración de credenciales y roles del sistema.</p>
-                        </div>
-                        <button onclick="openNuevoUsuarioModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors">
-                            <i class="fas fa-user-plus"></i> Nuevo Usuario
-                        </button>
-                    </div>
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <table class="w-full text-left border-collapse min-w-[600px]">
-                            <thead class="bg-gray-50 text-gray-600 text-sm border-b">
-                                <tr>
-                                    <th class="p-4 font-semibold w-24">Acciones</th>
-                                    <th class="p-4 font-semibold">Nombre</th>
-                                    <th class="p-4 font-semibold">Usuario (Login)</th>
-                                    <th class="p-4 font-semibold">Rol</th>
-                                    <th class="p-4 font-semibold">Notaría Asignada</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                ${generarTablaUsuarios()}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            } else if (state.adminTabActiva === 'notarias' && esSuperAdmin) {
-                mainContentHtml = `
-                    <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
-                        <div>
-                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-building text-blue-600 mr-2"></i> Gestión de Notarías</h2>
-                            <p class="text-sm text-gray-500">Creación de entidades notariales. Cree la notaría aquí antes de asignar usuarios.</p>
-                        </div>
-                        <button onclick="openNuevaNotariaModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-medium flex items-center gap-2 transition-colors">
-                            <i class="fas fa-plus"></i> Registrar Notaría
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        ${generarCardsNotarias()}
-                    </div>
-                `;
-            }
-
-            return `<div class="h-full">${tabsHtml}${mainContentHtml}</div>`;
-        }
-
-        function switchAdminTab(tab) {
-            state.adminTabActiva = tab;
-            renderCurrentView();
-        }
-
-        function generarCardsNotarias() {
-            if (LOCAL_DB.notarias.length === 0) return `<div class="col-span-full p-8 text-center text-gray-500">No hay notarías registradas.</div>`;
-            return LOCAL_DB.notarias.map(n => {
-                const numUsuarios = LOCAL_DB.users.filter(u => u.notariaId === n.id).length;
-                return `
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
-                        <div class="bg-gray-50 px-5 py-4 border-b flex justify-between">
-                            <h3 class="font-bold text-gray-800"><i class="fas fa-landmark text-gray-400"></i> ${n.nombre}</h3>
-                            <button onclick="eliminarNotaria('${n.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash-alt"></i></button>
-                        </div>
-                        <div class="p-5 flex-1 flex flex-col justify-center">
-                            <div class="flex justify-between bg-gray-50 p-3 rounded-lg border">
-                                <span class="text-sm text-gray-600">Usuarios Asignados:</span>
-                                <span class="font-bold">${numUsuarios}</span>
-                            </div>
-                        </div>
-                    </div>`;
-            }).join('');
-        }
-
-        function openNuevaNotariaModal() {
-            const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between">
-                        <h3 class="font-bold text-gray-800">Registrar Notaría</h3>
-                        <button onclick="closeModal()" class="text-gray-400"><i class="fas fa-times"></i></button>
-                    </div>
-                    <form onsubmit="guardarNuevaNotaria(event)" class="p-6 space-y-4">
-                        <input type="text" id="nueva_not_nombre" placeholder="Nombre de la Notaría" required class="block w-full border rounded-lg px-3 py-2 text-sm">
-                        <div class="flex justify-end gap-3 pt-4 border-t"><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Crear</button></div>
-                    </form>
+            html += `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-2">
+                    <table class="w-full text-left text-sm"><thead class="bg-gray-50 border-b"><tr><th class="p-3">Nombre</th><th class="p-3">Usuario</th><th class="p-3">Rol</th><th class="p-3">Notaría</th><th class="p-3">Acción</th></tr></thead>
+                    <tbody class="divide-y">
+                        ${usrFiltrados.map(u => `<tr><td class="p-3 font-medium">${u.nombre}</td><td class="p-3 text-gray-500">${u.username}</td><td class="p-3">${u.role===2?'Oficial':'Matrizador'}</td><td class="p-3">${LOCAL_DB.notarias.find(n=>n.id===u.notariaId)?.nombre||'-'}</td><td class="p-3"><button onclick="eliminarUsuario('${u.id}')" class="text-red-500"><i class="fas fa-trash"></i></button></td></tr>`).join('')}
+                    </tbody></table>
                 </div>`;
-            showModal(html);
+            return html;
         }
 
-        async function guardarNuevaNotaria(e) {
-            e.preventDefault();
-            const nombre = document.getElementById('nueva_not_nombre').value.trim();
-            Swal.fire({ title: 'Creando...', didOpen: () => Swal.showLoading() });
-            try {
-                const ref = await db.collection('notarias').add({ nombre });
-                LOCAL_DB.notarias.push({ id: ref.id, nombre });
-                closeModal(); Swal.fire('Éxito', 'Notaría creada.', 'success'); renderCurrentView();
-            } catch (err) { Swal.fire('Error', 'No se pudo crear.', 'error'); }
-        }
-
-        function eliminarNotaria(id) {
-            if (LOCAL_DB.users.some(u => u.notariaId === id)) return Swal.fire('Bloqueado', 'Esta notaría tiene usuarios asignados. Bórrelos primero.', 'warning');
-            Swal.fire({ title: '¿Eliminar?', showCancelButton: true }).then(async r => {
-                if(r.isConfirmed){
-                    await db.collection('notarias').doc(id).delete();
-                    LOCAL_DB.notarias = LOCAL_DB.notarias.filter(n => n.id !== id);
-                    renderCurrentView();
-                }
+        async function borrarNotaria(id) {
+            if(LOCAL_DB.users.some(u=>u.notariaId===id)) { Swal.fire('Bloqueado', 'Existen usuarios asignados a esta notaría.', 'warning'); return; }
+            Swal.fire({title:'¿Borrar Notaría?', showCancelButton:true}).then(async r => {
+                if(r.isConfirmed){ await db.collection('notarias').doc(id).delete(); LOCAL_DB.notarias=LOCAL_DB.notarias.filter(n=>n.id!==id); renderCurrentView(); }
             });
         }
-
-        function generarTablaUsuarios() {
-            let usuariosMostrar = LOCAL_DB.users;
-            if (state.currentUser.role === 2) usuariosMostrar = usuariosMostrar.filter(u => u.notariaId === state.currentUser.notariaId && u.role === 3);
-            return usuariosMostrar.map(u => {
-                const roleLabels = {1: 'SuperAdmin', 2: 'Oficial (Admin Notaría)', 3: 'Matrizador'};
-                const roleColors = {1: 'bg-red-100 text-red-800', 2: 'bg-blue-100 text-blue-800', 3: 'bg-gray-100 text-gray-800'};
-                const notariaStr = u.notariaId ? LOCAL_DB.notarias.find(n => n.id === u.notariaId)?.nombre : '<span class="text-xs text-gray-400 italic">Acceso Global</span>';
-                const deleteBtn = u.id !== state.currentUser.id ? `<button onclick="eliminarUsuario('${u.id}')" class="text-red-500 p-1"><i class="fas fa-trash-alt"></i></button>` : '';
-                const editBtn = `<button onclick="openEditUsuarioModal('${u.id}')" class="text-amber-500 p-1 mr-2"><i class="fas fa-edit"></i></button>`;
-                return `<tr class="hover:bg-gray-50"><td class="p-4 text-center">${editBtn}${deleteBtn}</td><td class="p-4 font-medium">${u.nombre}</td><td class="p-4">${u.username}</td><td class="p-4"><span class="px-2 py-0.5 rounded text-xs ${roleColors[u.role]}">${roleLabels[u.role]}</span></td><td class="p-4 text-sm">${notariaStr}</td></tr>`;
-            }).join('');
+        function openNotariaModal() {
+            showModal(`<div class="bg-white p-6 rounded-lg w-96"><h3 class="font-bold mb-4">Nueva Notaría</h3><input type="text" id="nn_nom" class="w-full border p-2 rounded mb-4" placeholder="Nombre (Ej: Notaría 11 Quito)"><div class="flex justify-end gap-2"><button onclick="closeModal()" class="px-3 py-1 bg-gray-200 rounded">Cancelar</button><button onclick="saveNotaria()" class="px-3 py-1 bg-blue-600 text-white rounded">Guardar</button></div></div>`);
+        }
+        async function saveNotaria() {
+            const nom = document.getElementById('nn_nom').value;
+            if(!nom) return;
+            Swal.fire({title:'Guardando...', didOpen:()=>Swal.showLoading()});
+            const ref = await db.collection('notarias').add({nombre:nom});
+            LOCAL_DB.notarias.push({id:ref.id, nombre:nom});
+            closeModal(); Swal.close(); renderCurrentView();
         }
 
         function openNuevoUsuarioModal() {
-            let roleOptions = state.currentUser.role === 1 ? `<option value="1">Super Administrador</option><option value="2">Oficial de Cumplimiento</option><option value="3">Matrizador</option>` : `<option value="3">Matrizador</option>`;
-            let notariaOptions = state.currentUser.role === 1 
-                ? `<option value="">-- Ninguna (Acceso Global) --</option>` + LOCAL_DB.notarias.map(n => `<option value="${n.id}">${n.nombre}</option>`).join('')
-                : `<option value="${state.currentUser.notariaId}">${LOCAL_DB.notarias.find(n=>n.id===state.currentUser.notariaId).nombre}</option>`;
-
-            const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all fade-in">
-                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between"><h3 class="font-bold text-gray-800">Nuevo Usuario</h3><button onclick="closeModal()"><i class="fas fa-times text-gray-400"></i></button></div>
-                    <form onsubmit="guardarNuevoUsuario(event)" class="p-6 space-y-4">
-                        <input type="text" id="usr_nombre" placeholder="Nombre Completo" required class="w-full border rounded px-3 py-2 text-sm">
-                        <div class="grid grid-cols-2 gap-4">
-                            <input type="text" id="usr_username" placeholder="Usuario (Login)" required class="w-full border rounded px-3 py-2 text-sm">
-                            <input type="password" id="usr_password" placeholder="Contraseña" required class="w-full border rounded px-3 py-2 text-sm">
-                        </div>
-                        <select id="usr_rol" required class="w-full border rounded px-3 py-2 text-sm" onchange="document.getElementById('usr_notaria').disabled=(this.value==='1')">
-                            ${roleOptions}
-                        </select>
-                        <select id="usr_notaria" required class="w-full border rounded px-3 py-2 text-sm">
-                            ${notariaOptions}
-                        </select>
-                        <div class="flex justify-end gap-3 pt-4 border-t"><button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded text-sm">Crear</button></div>
-                    </form>
-                </div>`;
-            showModal(html);
-        }
-
-        async function guardarNuevoUsuario(e) {
-            e.preventDefault();
-            const username = document.getElementById('usr_username').value;
-            if(LOCAL_DB.users.some(u => u.username === username)) return Swal.fire('Error', 'El usuario ya existe.', 'error');
-
-            const data = {
-                nombre: document.getElementById('usr_nombre').value,
-                username: username,
-                password: document.getElementById('usr_password').value,
-                role: parseInt(document.getElementById('usr_rol').value),
-                notariaId: document.getElementById('usr_rol').value === "1" ? null : document.getElementById('usr_notaria').value
-            };
+            const roleOpts = state.currentUser.role === 1 ? `<option value="1">SuperAdmin</option><option value="2" selected>Oficial</option><option value="3">Matrizador</option>` : `<option value="3">Matrizador</option>`;
+            const notOpts = state.currentUser.role === 1 ? LOCAL_DB.notarias.map(n=>`<option value="${n.id}">${n.nombre}</option>`).join('') : `<option value="${state.currentUser.notariaId}">${LOCAL_DB.notarias.find(n=>n.id===state.currentUser.notariaId).nombre}</option>`;
             
-            Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading() });
-            try {
-                const ref = await db.collection('users').add(data);
-                LOCAL_DB.users.push({ id: ref.id, ...data });
-                closeModal(); Swal.fire('Éxito', 'Usuario creado.', 'success'); renderCurrentView();
-            } catch (err) { Swal.fire('Error', 'No se pudo crear.', 'error'); }
-        }
-
-        function openEditUsuarioModal(userId) {
-            const u = LOCAL_DB.users.find(x => x.id === userId);
-            if (!u) return;
-            const html = `
-                <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden fade-in">
-                    <div class="px-6 py-4 border-b bg-gray-50 flex justify-between"><h3 class="font-bold">Editar Usuario</h3><button onclick="closeModal()"><i class="fas fa-times text-gray-400"></i></button></div>
-                    <form onsubmit="guardarEdicionUsuario(event, '${userId}')" class="p-6 space-y-4">
-                        <input type="text" id="edit_usr_nombre" value="${u.nombre}" required class="w-full border rounded px-3 py-2 text-sm">
-                        <div class="grid grid-cols-2 gap-4">
-                            <input type="text" id="edit_usr_username" value="${u.username}" required class="w-full border rounded px-3 py-2 text-sm">
-                            <input type="password" id="edit_usr_password" placeholder="Nueva Clave (opcional)" class="w-full border rounded px-3 py-2 text-sm">
-                        </div>
-                        <div class="flex justify-end pt-4 border-t"><button type="submit" class="px-4 py-2 bg-amber-500 text-white rounded text-sm">Actualizar</button></div>
+            showModal(`
+                <div class="bg-white p-6 rounded-xl w-full max-w-md">
+                    <h3 class="font-bold mb-4">Nuevo Usuario</h3>
+                    <form onsubmit="saveUser(event)" class="space-y-3">
+                        <input type="text" id="nu_nom" required placeholder="Nombre Completo" class="w-full border p-2 rounded text-sm">
+                        <input type="text" id="nu_usr" required placeholder="Usuario (login)" class="w-full border p-2 rounded text-sm">
+                        <input type="password" id="nu_pwd" required placeholder="Clave" class="w-full border p-2 rounded text-sm">
+                        <select id="nu_rol" class="w-full border p-2 rounded text-sm" onchange="document.getElementById('nu_not').disabled=(this.value==='1')">${roleOpts}</select>
+                        <select id="nu_not" class="w-full border p-2 rounded text-sm">${notOpts}</select>
+                        <div class="flex justify-end gap-2 pt-2"><button type="button" onclick="closeModal()" class="px-3 py-1.5 bg-gray-200 rounded text-sm">Cancelar</button><button type="submit" class="px-3 py-1.5 bg-purple-600 text-white rounded text-sm">Guardar</button></div>
                     </form>
-                </div>`;
-            showModal(html);
+                </div>
+            `);
         }
-
-        async function guardarEdicionUsuario(e, userId) {
+        async function saveUser(e) {
             e.preventDefault();
-            const uIdx = LOCAL_DB.users.findIndex(x => x.id === userId);
-            const username = document.getElementById('edit_usr_username').value;
-            if(LOCAL_DB.users.some(x => x.username === username && x.id !== userId)) return Swal.fire('Error', 'Usuario en uso.', 'error');
-
-            const upd = { nombre: document.getElementById('edit_usr_nombre').value, username };
-            const p = document.getElementById('edit_usr_password').value;
-            if(p.trim() !== '') upd.password = p;
-
-            Swal.fire({ title: 'Actualizando...', didOpen: () => Swal.showLoading() });
-            try {
-                await db.collection('users').doc(userId).update(upd);
-                LOCAL_DB.users[uIdx] = { ...LOCAL_DB.users[uIdx], ...upd };
-                closeModal(); Swal.fire('Éxito', 'Usuario actualizado.', 'success'); renderCurrentView();
-            } catch (err) { Swal.fire('Error', 'No se pudo actualizar.', 'error'); }
+            const usr = document.getElementById('nu_usr').value;
+            if(LOCAL_DB.users.some(u=>u.username===usr)) { Swal.fire('Error','Usuario en uso','error'); return; }
+            Swal.fire({title:'Guardando...', didOpen:()=>Swal.showLoading()});
+            const data = { nombre:document.getElementById('nu_nom').value, username:usr, password:document.getElementById('nu_pwd').value, role:parseInt(document.getElementById('nu_rol').value), notariaId: document.getElementById('nu_rol').value==='1'?null:document.getElementById('nu_not').value };
+            const ref = await db.collection('users').add(data);
+            LOCAL_DB.users.push({id:ref.id, ...data});
+            closeModal(); Swal.close(); renderCurrentView();
         }
-
         function eliminarUsuario(id) {
-            Swal.fire({ title: '¿Eliminar Usuario?', icon: 'warning', showCancelButton: true }).then(async r => {
-                if(r.isConfirmed) {
-                    await db.collection('users').doc(id).delete();
-                    LOCAL_DB.users = LOCAL_DB.users.filter(x => x.id !== id);
-                    renderCurrentView();
-                }
-            });
+            Swal.fire({title:'¿Borrar?', showCancelButton:true}).then(async r=>{ if(r.isConfirmed){ await db.collection('users').doc(id).delete(); LOCAL_DB.users=LOCAL_DB.users.filter(u=>u.id!==id); renderCurrentView(); } });
         }
 
-        function getRiesgosHTML() {
-            let notariaSelector = '';
-            if (state.currentUser.role === 1) {
-                notariaSelector = `
-                    <select id="filtro_notaria_riesgos" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none dyn-border-primary bg-white shadow-sm mt-4 sm:mt-0" onchange="cambiarFiltroGeneral(this.value)">
-                        <option value="">Todas las Notarías</option>
-                        ${LOCAL_DB.notarias.map(n => `<option value="${n.id}" ${state.filtroNotariaGeneral === n.id ? 'selected':''}>${n.nombre}</option>`).join('')}
-                    </select>
-                `;
-            }
+        // --- MÓDULO RIESGOS ---
+        function getRiesgosHTML() { return `<div class="bg-white p-6 rounded-xl shadow-sm text-center"><i class="fas fa-shield-alt text-4xl text-red-500 mb-2"></i><h2 class="font-bold text-xl">Análisis de Riesgos (UAFE)</h2><p class="text-gray-500 mt-2">Módulo en construcción.</p></div>`; }
+
+        // --- MÓDULO CONSULTAS (e-Satje) ---
+        function getConsultasHTML() {
             return `
-                <div class="space-y-6">
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between sm:items-center">
-                        <div><h2 class="text-xl font-bold text-gray-800"><i class="fas fa-shield-alt text-red-600 mr-2"></i> Análisis de Riesgos</h2></div>
-                        ${notariaSelector}
-                    </div>
-                    <div class="bg-white p-10 rounded-xl shadow-sm border border-gray-100 text-center">
-                        <i class="fas fa-cogs text-5xl text-gray-300 mb-4"></i>
-                        <h3 class="text-lg font-medium text-gray-700">Módulo en Construcción</h3>
+            <div class="h-full flex flex-col space-y-4">
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4 justify-between md:items-end">
+                    <div><h2 class="text-xl font-bold"><i class="fas fa-gavel text-amber-500 mr-2"></i> Consultas Externas (Due Diligence)</h2><p class="text-sm text-gray-500">Busque antecedentes en la Función Judicial</p></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="satje_input" placeholder="Cédula / RUC / Nombre" class="border rounded-lg px-3 py-2 text-sm w-64">
+                        <button onclick="buscarSatjeSimulator()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-colors"><i class="fas fa-search"></i> Buscar</button>
                     </div>
                 </div>
-            `;
+                <div id="satje_results" class="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 overflow-y-auto">
+                    <i class="fas fa-balance-scale text-5xl mb-3 opacity-20"></i><p>Ingrese un criterio de búsqueda y presione Buscar para consultar los procesos.</p>
+                </div>
+            </div>`;
         }
-
-        function navigate(view) {
-            state.currentView = view;
-            localStorage.setItem('notaryLastView', view);
-            renderCurrentView();
-        }
-
-        function updateSidebarActive() {
-            if(!state.currentUser) return;
-            const items = ['dashboard', 'actos', 'consultas', 'reportes', 'riesgos', 'usuarios'];
-            items.forEach(item => {
-                const el = document.getElementById(`nav-${item}`);
-                if (el) {
-                    if (item === state.currentView) {
-                        el.classList.add('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
-                    } else {
-                        el.classList.remove('bg-black/20', 'font-medium', 'border-l-4', 'border-white');
-                    }
-                }
-            });
-        }
-
-        function handleLogin(e) {
-            e.preventDefault();
-            const user = document.getElementById('login-username').value;
-            const pass = document.getElementById('login-password').value;
+        function renderConsultasViewer() {}
+        function buscarSatjeSimulator() {
+            const input = document.getElementById('satje_input').value.trim();
+            if(!input) { Swal.fire('Error', 'Ingrese un dato válido', 'warning'); return; }
+            const resContainer = document.getElementById('satje_results');
+            resContainer.innerHTML = `<div class="py-10"><i class="fas fa-circle-notch fa-spin text-4xl text-amber-500 mb-3"></i><p class="font-bold text-gray-700">Conectando con e-Satje...</p><p class="text-xs text-gray-500">Buscando expedientes de: ${input}</p></div>`;
             
-            const foundUser = LOCAL_DB.users.find(u => u.username === user && u.password === pass);
-            
-            if (foundUser) {
-                state.currentUser = foundUser;
-                state.currentView = 'dashboard';
-                
-                localStorage.setItem('notarySession', JSON.stringify({ user: foundUser }));
-                localStorage.setItem('notaryLastView', 'dashboard');
-                resetInactivityTimer();
-                
-                renderApp();
-            } else {
-                Swal.fire({ icon: 'error', title: 'Error', text: 'Credenciales incorrectas' });
-            }
+            setTimeout(() => {
+                resContainer.innerHTML = `
+                    <div class="text-left w-full max-w-4xl mx-auto fade-in">
+                        <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg mb-4 flex justify-between items-center"><span class="font-bold text-amber-800">Resultados para: ${input}</span><span class="text-xs bg-amber-200 text-amber-800 px-2 py-1 rounded">2 coincidencias (Simulación)</span></div>
+                        <div class="space-y-4">
+                            <div class="border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                                <div class="flex justify-between items-start mb-2"><span class="font-mono text-sm font-bold text-blue-800 bg-blue-50 px-2 py-1 rounded">09332-2023-01589</span><span class="text-xs font-semibold text-gray-500"><i class="far fa-calendar-alt"></i> 14/05/2023</span></div>
+                                <h4 class="font-bold text-gray-800">COBRO DE PAGARÉ</h4>
+                                <div class="grid grid-cols-2 text-sm mt-2"><p><span class="text-gray-500">Actor/Ofendido:</span> BANCO PICHINCHA C.A.</p><p><span class="text-gray-500">Demandado/Procesado:</span> ${input.toUpperCase()}</p></div>
+                                <p class="text-xs mt-3 pt-2 border-t text-gray-500"><i class="fas fa-university"></i> UNIDAD JUDICIAL CIVIL CON SEDE EN EL CANTÓN GUAYAQUIL</p>
+                            </div>
+                            <div class="border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                                <div class="flex justify-between items-start mb-2"><span class="font-mono text-sm font-bold text-blue-800 bg-blue-50 px-2 py-1 rounded">17230-2018-00412</span><span class="text-xs font-semibold text-gray-500"><i class="far fa-calendar-alt"></i> 02/09/2018</span></div>
+                                <h4 class="font-bold text-gray-800">DIVORCIO POR MUTUO CONSENTIMIENTO</h4>
+                                <div class="grid grid-cols-2 text-sm mt-2"><p><span class="text-gray-500">Actor/Ofendido:</span> ${input.toUpperCase()}</p><p><span class="text-gray-500">Demandado/Procesado:</span> PERSONA PRUEBA</p></div>
+                                <p class="text-xs mt-3 pt-2 border-t text-gray-500"><i class="fas fa-university"></i> UNIDAD JUDICIAL DE FAMILIA, MUJER, NIÑEZ Y ADOLESCENCIA DE QUITO</p>
+                            </div>
+                        </div>
+                    </div>`;
+            }, 1500);
         }
 
-        function handleLogout(autoLogout = false) {
-            state.currentUser = null;
-            state.currentView = 'login';
-            
-            localStorage.removeItem('notarySession');
-            localStorage.removeItem('notaryLastView');
-            clearTimeout(inactivityTimer);
-            
-            renderApp();
-            
-            if (autoLogout) {
-                Swal.fire({ icon: 'info', title: 'Sesión Expirada', text: 'Su sesión se ha cerrado automáticamente por seguridad.' });
-            }
-        }
-
-        function showModal(contentHTML) {
-            const container = document.getElementById('modal-container');
-            container.innerHTML = `
-                <div class="fixed inset-0 bg-gray-900 bg-opacity-50 backdrop-blur-sm z-40"></div>
-                <div class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
-                    ${contentHTML}
-                </div>`;
-            container.classList.remove('hidden');
-        }
-
-        function closeModal() {
-            const container = document.getElementById('modal-container');
-            container.classList.add('hidden');
-            container.innerHTML = '';
-        }
-
+        // --- INICIALIZACIÓN ---
         window.onload = async () => {
-            Swal.fire({ title: 'Conectando con NEXUM...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() } });
-            
-            await loadDataFromFirebase();
-            
-            const savedSessionStr = localStorage.getItem('notarySession');
+            const savedSessionStr = localStorage.getItem(SESSION_KEY);
             if (savedSessionStr) {
-                try {
-                    const sessionData = JSON.parse(savedSessionStr);
-                    const validUser = LOCAL_DB.users.find(u => u.id === sessionData.user.id);
-                    
-                    if (validUser) {
-                        state.currentUser = validUser;
-                        state.currentView = localStorage.getItem('notaryLastView') || 'dashboard';
-                        resetInactivityTimer();
-                    } else {
-                        localStorage.removeItem('notarySession'); 
-                    }
-                } catch (e) {
-                    localStorage.removeItem('notarySession'); 
-                }
+                const sData = JSON.parse(savedSessionStr);
+                const now = new Date().getTime();
+                if (now - sData.lastActive < SESSION_TIMEOUT_MS) {
+                    state.currentUser = sData.user;
+                    state.currentView = sData.lastView || 'dashboard';
+                    updateSessionTime();
+                } else { localStorage.removeItem(SESSION_KEY); }
             }
-            
+
+            Swal.fire({ title: 'Conectando con la Nube...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            await loadDataFromFirebase();
             Swal.close();
             renderApp();
         };
-
     </script>
 </body>
 </html>
