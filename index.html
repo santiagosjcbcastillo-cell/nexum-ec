@@ -1339,18 +1339,150 @@
         }
         async function saveUser(e) {
             e.preventDefault();
-            const usr = document.getElementById('nu_usr').value;
-            if(LOCAL_DB.users.some(u=>u.username===usr)) { Swal.fire('Error','Usuario en uso','error'); return; }
-            Swal.fire({title:'Guardando...', didOpen:()=>Swal.showLoading()});
-            
-            const isSuper = document.getElementById('nu_rol').value === '1';
-            const data = { nombre:document.getElementById('nu_nom').value, username:usr, password:document.getElementById('nu_pwd').value, role:parseInt(document.getElementById('nu_rol').value), notariaId: isSuper ? null : document.getElementById('nu_not').value };
-            
-            if(!isSuper && !data.notariaId) { Swal.fire('Error', 'Seleccione una notaría válida.', 'warning'); return; }
-
-            const ref = await db.collection('users').add(data);
-            LOCAL_DB.users.push({id:ref.id, ...data});
-            closeModal(); Swal.close(); renderCurrentView();
+        
+            const currentFirebaseUser = auth.currentUser;
+        
+            if (!currentFirebaseUser) {
+                Swal.fire(
+                    'Sesión inválida',
+                    'Debe iniciar sesión nuevamente.',
+                    'error'
+                );
+                return;
+            }
+        
+            const nombre = document
+                .getElementById('nu_nom')
+                .value
+                .trim();
+        
+            const username = document
+                .getElementById('nu_usr')
+                .value
+                .trim()
+                .toLowerCase();
+        
+            const password = document
+                .getElementById('nu_pwd')
+                .value;
+        
+            const role = parseInt(
+                document.getElementById('nu_rol').value
+            );
+        
+            const isSuper = role === 1;
+        
+            const notariaId = isSuper
+                ? null
+                : document.getElementById('nu_not').value;
+        
+            if (!nombre || !username || !password) {
+                Swal.fire(
+                    'Datos incompletos',
+                    'Complete todos los campos obligatorios.',
+                    'warning'
+                );
+                return;
+            }
+        
+            if (password.length < 8) {
+                Swal.fire(
+                    'Contraseña demasiado corta',
+                    'La contraseña debe tener al menos 8 caracteres.',
+                    'warning'
+                );
+                return;
+            }
+        
+            if (!isSuper && !notariaId) {
+                Swal.fire(
+                    'Error',
+                    'Seleccione una notaría válida.',
+                    'warning'
+                );
+                return;
+            }
+        
+            Swal.fire({
+                title: 'Guardando...',
+                text: 'Creando usuario de forma segura',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+        
+            try {
+        
+                // Obtener token REAL de la sesión Firebase
+                const idToken =
+                    await currentFirebaseUser.getIdToken();
+        
+                const response = await fetch(
+                    '/api/create-user',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type':
+                                'application/json',
+        
+                            'Authorization':
+                                `Bearer ${idToken}`
+                        },
+        
+                        body: JSON.stringify({
+                            nombre,
+                            username,
+                            password,
+                            role,
+                            notariaId
+                        })
+                    }
+                );
+        
+                const result = await response.json();
+        
+                if (!response.ok) {
+                    throw new Error(
+                        result.error ||
+                        'No fue posible crear el usuario'
+                    );
+                }
+        
+                // Agregar a memoria únicamente para
+                // actualizar la interfaz actual
+                if (result.user) {
+                    LOCAL_DB.users.push(result.user);
+                }
+        
+                closeModal();
+        
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Usuario creado',
+                    text:
+                        `El usuario ${username} fue creado correctamente.`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+        
+                if (state.currentView === 'usuarios') {
+                    renderCurrentView();
+                }
+        
+            } catch (error) {
+        
+                console.error(
+                    'Error creando usuario:',
+                    error
+                );
+        
+                Swal.fire({
+                    icon: 'error',
+                    title: 'No se pudo crear',
+                    text:
+                        error.message ||
+                        'No fue posible crear el usuario.'
+                });
+            }
         }
         function eliminarUsuario(id) {
             Swal.fire({title:'¿Borrar?', showCancelButton:true}).then(async r=>{ if(r.isConfirmed){ await db.collection('users').doc(id).delete(); LOCAL_DB.users=LOCAL_DB.users.filter(u=>u.id!==id); renderCurrentView(); } });
