@@ -16,6 +16,7 @@
     <!-- FIREBASE SDK (Compat Version) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <script>
         tailwind.config = {
@@ -70,7 +71,9 @@
             appId: "1:412500807010:web:4466cbccc2cf8ecc5df03b"
         };
         firebase.initializeApp(firebaseConfig);
+
         const db = firebase.firestore();
+        const auth = firebase.auth();
 
         // --- DICCIONARIOS PARAMÉTRICOS ---
         const DIC_MONEDAS = ['USD - Dólares Estadounidenses', 'EUR - Euros', 'COP - Pesos Colombianos', 'MXN - Pesos Mexicanos', 'PEN - Soles Peruanos', 'CLP - Pesos Chilenos', 'ARS - Pesos Argentinos'];
@@ -146,32 +149,122 @@
 
         async function loadDataFromFirebase() {
             try {
-                const usersSnap = await db.collection('users').get();
-                LOCAL_DB.users = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                const notariasSnap = await db.collection('notarias').get();
-                LOCAL_DB.notarias = notariasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                const actosSnap = await db.collection('actos').get();
-                LOCAL_DB.actos = actosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                const fuentesSnap = await db.collection('fuentesConsulta').get();
-                LOCAL_DB.fuentesConsulta = fuentesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                if (LOCAL_DB.users.length === 0) {
-                    const adminData = { username: 'sjcastillob', password: '1234', role: 1, notariaId: null, nombre: 'Admin Global' };
-                    const adminRef = await db.collection('users').add(adminData);
-                    LOCAL_DB.users.push({ id: adminRef.id, ...adminData });
+                if (!state.currentUser) {
+                    throw new Error('No existe una sesión autenticada');
                 }
-
-                if (LOCAL_DB.fuentesConsulta.length === 0) {
-                    const fData = { nombre: 'Función Judicial - Procesos', url: 'https://procesosjudiciales.funcionjudicial.gob.ec/busqueda-filtros' };
-                    const fRef = await db.collection('fuentesConsulta').add(fData);
-                    LOCAL_DB.fuentesConsulta.push({ id: fRef.id, ...fData });
+        
+                const user = state.currentUser;
+        
+                // Limpiar memoria antes de cargar
+                LOCAL_DB.users = [];
+                LOCAL_DB.notarias = [];
+                LOCAL_DB.actos = [];
+                LOCAL_DB.fuentesConsulta = [];
+        
+                // =====================================================
+                // NOTARÍAS
+                // =====================================================
+        
+                if (user.role === 1) {
+                    // SuperAdmin: todas las notarías
+                    const notariasSnap = await db
+                        .collection('notarias')
+                        .get();
+        
+                    LOCAL_DB.notarias = notariasSnap.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+        
+                } else if (user.notariaId) {
+                    // Oficial y Matrizador: únicamente su notaría
+                    const notariaDoc = await db
+                        .collection('notarias')
+                        .doc(user.notariaId)
+                        .get();
+        
+                    if (notariaDoc.exists) {
+                        LOCAL_DB.notarias = [{
+                            id: notariaDoc.id,
+                            ...notariaDoc.data()
+                        }];
+                    }
                 }
+        
+                // =====================================================
+                // ACTOS
+                // =====================================================
+        
+                let actosQuery = db.collection('actos');
+        
+                if (user.role === 2) {
+                    // Oficial: todos los actos de su notaría
+                    actosQuery = actosQuery.where(
+                        'notariaId',
+                        '==',
+                        user.notariaId
+                    );
+        
+                } else if (user.role === 3) {
+                    // Matrizador: únicamente los actos creados por él
+                    // dentro de su propia notaría
+                    actosQuery = actosQuery
+                        .where(
+                            'notariaId',
+                            '==',
+                            user.notariaId
+                        )
+                        .where(
+                            'creadoPorId',
+                            '==',
+                            user.id
+                        );
+                }
+        
+                const actosSnap = await actosQuery.get();
+        
+                LOCAL_DB.actos = actosSnap.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+        
+                // =====================================================
+                // USUARIOS
+                // =====================================================
+        
+                // Temporalmente solo conservamos al usuario autenticado.
+                //
+                // NO descargamos la colección completa "users" porque
+                // todavía contiene contraseñas antiguas en texto plano.
+                //
+                // Posteriormente la Gestión de Usuarios usará un
+                // endpoint seguro del backend.
+                LOCAL_DB.users = [
+                    {
+                        ...state.currentUser
+                    }
+                ];
+        
+                // =====================================================
+                // FUENTES DE CONSULTA
+                // =====================================================
+        
+                const fuentesSnap = await db
+                    .collection('fuentesConsulta')
+                    .get();
+        
+                LOCAL_DB.fuentesConsulta = fuentesSnap.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+        
             } catch (error) {
-                console.error("Firebase Error:", error);
-                Swal.fire('Error', 'No se pudo conectar con la base de datos.', 'error');
+                console.error(
+                    'Error cargando datos desde Firebase:',
+                    error
+                );
+        
+                throw error;
             }
         }
 
@@ -221,28 +314,120 @@
             });
         }
 
-        function handleLogin(e) {
+        async function handleLogin(e) {
             e.preventDefault();
-            const user = document.getElementById('login-username').value;
-            const pass = document.getElementById('login-password').value;
-            const foundUser = LOCAL_DB.users.find(u => u.username === user && u.password === pass);
-            
-            if (foundUser) {
+        
+            const username = document
+                .getElementById('login-username')
+                .value
+                .trim();
+        
+            const password = document
+                .getElementById('login-password')
+                .value;
+        
+            Swal.fire({
+                title: 'Verificando credenciales...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+        
+            try {
+                // 1. Validar usuario y contraseña en el backend de Vercel
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password
+                    })
+                });
+        
+                if (!response.ok) {
+                    throw new Error('Credenciales incorrectas');
+                }
+        
+                const data = await response.json();
+        
+                if (!data.token) {
+                    throw new Error('Token no recibido');
+                }
+        
+                // 2. Crear sesión REAL de Firebase Authentication
+                const credential = await auth.signInWithCustomToken(data.token);
+        
+                const uid = credential.user.uid;
+        
+                // 3. Obtener únicamente el perfil del usuario autenticado
+                const userDoc = await db.collection('users').doc(uid).get();
+        
+                if (!userDoc.exists) {
+                    await auth.signOut();
+                    throw new Error('Perfil de usuario no encontrado');
+                }
+        
+                const foundUser = {
+                    id: uid,
+                    ...userDoc.data()
+                };
+        
+                if (foundUser.active === false) {
+                    await auth.signOut();
+                    throw new Error('Usuario deshabilitado');
+                }
+        
+                // 4. Establecer usuario de NEXUM
                 state.currentUser = foundUser;
                 state.currentView = 'dashboard';
-                localStorage.setItem(SESSION_KEY, JSON.stringify({ user: foundUser, lastActive: new Date().getTime(), lastView: 'dashboard' }));
+        
+                // 5. Cargar información únicamente después de autenticarse
+                await loadDataFromFirebase();
+        
+                // 6. Mantener información auxiliar de la interfaz
+                localStorage.setItem(
+                    SESSION_KEY,
+                    JSON.stringify({
+                        lastActive: new Date().getTime(),
+                        lastView: 'dashboard'
+                    })
+                );
+        
                 updateSessionTime();
+        
+                Swal.close();
                 renderApp();
-            } else {
-                Swal.fire({ icon: 'error', title: 'Acceso Denegado', text: 'Credenciales incorrectas' });
+        
+            } catch (error) {
+                console.error('Login Error:', error);
+        
+                try {
+                    await auth.signOut();
+                } catch (_) {}
+        
+                state.currentUser = null;
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Acceso Denegado',
+                    text: 'Usuario o contraseña incorrectos.'
+                });
             }
         }
 
-        function handleLogout() {
+        async function handleLogout() {
+            try {
+                await auth.signOut();
+            } catch (error) {
+                console.error('Logout Error:', error);
+            }
+        
             state.currentUser = null;
             state.currentView = 'login';
+        
             localStorage.removeItem(SESSION_KEY);
             clearTimeout(sessionTimer);
+        
             renderApp();
         }
 
@@ -1233,22 +1418,169 @@
             container.innerHTML = '';
         }
 
-        window.onload = async () => {
-            const savedSessionStr = localStorage.getItem(SESSION_KEY);
-            if (savedSessionStr) {
-                const sData = JSON.parse(savedSessionStr);
-                const now = new Date().getTime();
-                if (now - sData.lastActive < SESSION_TIMEOUT_MS) {
-                    state.currentUser = sData.user;
-                    state.currentView = sData.lastView || 'dashboard';
-                    updateSessionTime();
-                } else { localStorage.removeItem(SESSION_KEY); }
-            }
+        window.onload = () => {
 
-            Swal.fire({ title: 'Conectando con la Nube...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-            await loadDataFromFirebase();
-            Swal.close();
-            renderApp();
+            Swal.fire({
+                title: 'Conectando con la Nube...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+        
+            const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+        
+                // Solo necesitamos este listener para restaurar
+                // la sesión cuando carga la página.
+                unsubscribe();
+        
+                try {
+        
+                    // -----------------------------------------
+                    // NO existe sesión Firebase
+                    // -----------------------------------------
+                    if (!firebaseUser) {
+        
+                        state.currentUser = null;
+                        state.currentView = 'login';
+        
+                        localStorage.removeItem(SESSION_KEY);
+        
+                        Swal.close();
+                        renderApp();
+        
+                        return;
+                    }
+        
+                    // -----------------------------------------
+                    // Verificar tiempo de inactividad
+                    // -----------------------------------------
+                    const savedSessionStr =
+                        localStorage.getItem(SESSION_KEY);
+        
+                    if (!savedSessionStr) {
+        
+                        await auth.signOut();
+        
+                        state.currentUser = null;
+                        state.currentView = 'login';
+        
+                        Swal.close();
+                        renderApp();
+        
+                        return;
+                    }
+        
+                    const savedSession =
+                        JSON.parse(savedSessionStr);
+        
+                    const now = new Date().getTime();
+        
+                    if (
+                        !savedSession.lastActive ||
+                        now - savedSession.lastActive >= SESSION_TIMEOUT_MS
+                    ) {
+        
+                        await auth.signOut();
+        
+                        localStorage.removeItem(SESSION_KEY);
+        
+                        state.currentUser = null;
+                        state.currentView = 'login';
+        
+                        Swal.close();
+                        renderApp();
+        
+                        return;
+                    }
+        
+                    // -----------------------------------------
+                    // Obtener perfil REAL desde Firestore
+                    // -----------------------------------------
+                    const userDoc = await db
+                        .collection('users')
+                        .doc(firebaseUser.uid)
+                        .get();
+        
+                    if (!userDoc.exists) {
+        
+                        await auth.signOut();
+        
+                        localStorage.removeItem(SESSION_KEY);
+        
+                        state.currentUser = null;
+                        state.currentView = 'login';
+        
+                        Swal.close();
+                        renderApp();
+        
+                        return;
+                    }
+        
+                    const foundUser = {
+                        id: firebaseUser.uid,
+                        ...userDoc.data()
+                    };
+        
+                    // Usuario deshabilitado
+                    if (foundUser.active === false) {
+        
+                        await auth.signOut();
+        
+                        localStorage.removeItem(SESSION_KEY);
+        
+                        state.currentUser = null;
+                        state.currentView = 'login';
+        
+                        Swal.close();
+                        renderApp();
+        
+                        return;
+                    }
+        
+                    // -----------------------------------------
+                    // Restaurar NEXUM
+                    // -----------------------------------------
+                    state.currentUser = foundUser;
+        
+                    state.currentView =
+                        savedSession.lastView || 'dashboard';
+        
+                    localStorage.setItem(
+                        SESSION_KEY,
+                        JSON.stringify({
+                            lastActive: now,
+                            lastView: state.currentView
+                        })
+                    );
+        
+                    updateSessionTime();
+        
+                    // Los datos se cargan SOLO después
+                    // de comprobar Firebase Authentication.
+                    await loadDataFromFirebase();
+        
+                    Swal.close();
+                    renderApp();
+        
+                } catch (error) {
+        
+                    console.error(
+                        'Error restaurando sesión:',
+                        error
+                    );
+        
+                    try {
+                        await auth.signOut();
+                    } catch (_) {}
+        
+                    localStorage.removeItem(SESSION_KEY);
+        
+                    state.currentUser = null;
+                    state.currentView = 'login';
+        
+                    Swal.close();
+                    renderApp();
+                }
+            });
         };
     </script>
 </body>
