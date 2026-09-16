@@ -1,15 +1,52 @@
 const bcrypt = require('bcryptjs');
 const { admin, db, auth } = require('../lib/firebase-admin');
 
+
+// =====================================================
+// REGISTRO DE AUDITORÍA
+// =====================================================
+
+async function createSecurityLog(data) {
+
+  await db.collection('securityLogs').add({
+
+    ...data,
+
+    timestamp:
+      admin.firestore.FieldValue.serverTimestamp()
+
+  });
+
+}
+
+
+
 module.exports = async function handler(req, res) {
+
+
   if (req.method !== 'POST') {
+
     return res.status(405).json({
-      error: 'Método no permitido'
+      error:'Método no permitido'
     });
+
   }
 
+
+
+  let usernameNormalizado = null;
+
+
+
   try {
-    const { username, password } = req.body || {};
+
+
+    const {
+      username,
+      password
+    } = req.body || {};
+
+
 
     if (
       typeof username !== 'string' ||
@@ -17,221 +54,561 @@ module.exports = async function handler(req, res) {
       !username.trim() ||
       !password
     ) {
+
       return res.status(400).json({
-        error: 'Datos incompletos'
+        error:'Datos incompletos'
       });
+
     }
 
-    const usernameIngresado = username.trim();
-    const usernameNormalizado = usernameIngresado.toLowerCase();
+
+
+    const usernameIngresado =
+      username.trim();
+
+
+    usernameNormalizado =
+      usernameIngresado.toLowerCase();
+
+
 
     let uid = null;
+
     let passwordValida = false;
+
+
 
     // =====================================================
     // 1. SISTEMA NUEVO
-    // Contraseña protegida mediante bcrypt
     // =====================================================
 
-    const credentialRef = db
+
+    const credentialRef =
+      db
       .collection('authCredentials')
       .doc(usernameNormalizado);
 
-    const credentialDoc = await credentialRef.get();
+
+
+    const credentialDoc =
+      await credentialRef.get();
+
+
 
     if (credentialDoc.exists) {
-      const credential = credentialDoc.data();
+
+
+      const credential =
+        credentialDoc.data();
+
+
 
       if (credential.active === false) {
-        return res.status(401).json({
-          error: 'Credenciales incorrectas'
+
+        await createSecurityLog({
+
+          action:'LOGIN_FAILED',
+
+          username:
+            usernameNormalizado,
+
+          reason:
+            'Usuario deshabilitado'
+
         });
+
+
+        return res.status(401).json({
+          error:'Credenciales incorrectas'
+        });
+
       }
 
-      uid = credential.uid;
+
+
+
+      uid =
+        credential.uid;
+
+
 
       if (
         !credential.passwordHash ||
         typeof credential.passwordHash !== 'string'
       ) {
-        throw new Error('Credencial inválida');
+
+        throw new Error(
+          'Credencial inválida'
+        );
+
       }
 
-      passwordValida = await bcrypt.compare(
-        password,
-        credential.passwordHash
-      );
+
+
+
+      passwordValida =
+        await bcrypt.compare(
+          password,
+          credential.passwordHash
+        );
+
     }
 
+
+
+
+
     // =====================================================
-    // 2. MIGRACIÓN AUTOMÁTICA DE USUARIOS ANTIGUOS
+    // 2. MIGRACIÓN USUARIOS ANTIGUOS
     // =====================================================
 
+
     if (!credentialDoc.exists) {
-      let usersSnap = await db
+
+
+      let usersSnap =
+        await db
         .collection('users')
-        .where('username', '==', usernameIngresado)
+        .where(
+          'username',
+          '==',
+          usernameIngresado
+        )
         .limit(1)
         .get();
+
+
 
       if (
         usersSnap.empty &&
         usernameIngresado !== usernameNormalizado
       ) {
-        usersSnap = await db
+
+
+        usersSnap =
+          await db
           .collection('users')
-          .where('username', '==', usernameNormalizado)
+          .where(
+            'username',
+            '==',
+            usernameNormalizado
+          )
           .limit(1)
           .get();
+
+
       }
 
+
+
+
+
       if (!usersSnap.empty) {
-        const userDoc = usersSnap.docs[0];
-        const userData = userDoc.data();
 
-        uid = userDoc.id;
 
-        // Verificar contraseña antigua
+        const userDoc =
+          usersSnap.docs[0];
+
+
+        const userData =
+          userDoc.data();
+
+
+
+        uid =
+          userDoc.id;
+
+
+
         passwordValida =
           typeof userData.password === 'string' &&
           userData.password === password;
 
+
+
+
         if (passwordValida) {
 
-          // ---------------------------------------------
-          // Crear identidad Firebase Authentication
-          // conservando el ID original
-          // ---------------------------------------------
+
           try {
+
+
             await auth.getUser(uid);
 
-          } catch (error) {
 
-            if (error.code === 'auth/user-not-found') {
+
+          } catch(error) {
+
+
+            if (
+              error.code ===
+              'auth/user-not-found'
+            ) {
+
+
               await auth.createUser({
+
                 uid,
-                disabled: false
+
+                disabled:false
+
               });
+
+
             } else {
+
               throw error;
+
             }
+
           }
 
-          // ---------------------------------------------
-          // Generar hash seguro
-          // ---------------------------------------------
-          const passwordHash = await bcrypt.hash(
-            password,
-            12
-          );
 
-          // ---------------------------------------------
-          // Migración atómica
-          // ---------------------------------------------
-          const batch = db.batch();
+
+
+
+          const passwordHash =
+            await bcrypt.hash(
+              password,
+              12
+            );
+
+
+
+
+          const batch =
+            db.batch();
+
+
+
 
           batch.set(
+
             credentialRef,
+
             {
+
               uid,
-              username: usernameNormalizado,
+
+              username:
+                usernameNormalizado,
+
               passwordHash,
-              active: userData.active !== false,
+
+              active:
+                userData.active !== false,
+
               migratedAt:
                 admin.firestore.FieldValue.serverTimestamp()
+
             }
+
           );
+
+
+
+
 
           batch.update(
-            db.collection('users').doc(uid),
+
+            db.collection('users')
+            .doc(uid),
+
             {
-              username: usernameNormalizado,
+
+              username:
+                usernameNormalizado,
+
               password:
                 admin.firestore.FieldValue.delete(),
-              active: userData.active !== false,
+
+              active:
+                userData.active !== false,
+
               migratedAt:
                 admin.firestore.FieldValue.serverTimestamp()
+
             }
+
           );
 
+
+
+
           await batch.commit();
+
+
         }
+
       }
+
     }
+
+
+
+
 
     // =====================================================
     // 3. CREDENCIALES INCORRECTAS
     // =====================================================
 
+
     if (!uid || !passwordValida) {
-      return res.status(401).json({
-        error: 'Credenciales incorrectas'
+
+
+      await createSecurityLog({
+
+        action:'LOGIN_FAILED',
+
+        username:
+          usernameNormalizado,
+
+        reason:
+          'Credenciales incorrectas'
+
       });
+
+
+
+      return res.status(401).json({
+
+        error:
+          'Credenciales incorrectas'
+
+      });
+
+
     }
+
+
+
+
 
     // =====================================================
     // 4. COMPROBAR PERFIL
     // =====================================================
 
-    const profileDoc = await db
+
+    const profileDoc =
+      await db
       .collection('users')
       .doc(uid)
       .get();
 
+
+
+
     if (!profileDoc.exists) {
-      return res.status(401).json({
-        error: 'Credenciales incorrectas'
+
+
+      await createSecurityLog({
+
+        action:'LOGIN_FAILED',
+
+        username:
+          usernameNormalizado,
+
+        reason:
+          'Perfil inexistente'
+
       });
+
+
+
+      return res.status(401).json({
+
+        error:
+          'Credenciales incorrectas'
+
+      });
+
+
     }
 
-    const profile = profileDoc.data();
+
+
+
+    const profile =
+      profileDoc.data();
+
+
+
 
     if (profile.active === false) {
-      return res.status(401).json({
-        error: 'Credenciales incorrectas'
+
+
+      await createSecurityLog({
+
+        action:'LOGIN_FAILED',
+
+        username:
+          usernameNormalizado,
+
+        reason:
+          'Usuario deshabilitado'
+
       });
+
+
+
+      return res.status(401).json({
+
+        error:
+          'Credenciales incorrectas'
+
+      });
+
+
     }
 
+
+
+
+
     // =====================================================
-    // 5. ASEGURAR IDENTIDAD FIREBASE AUTH
+    // 5. ASEGURAR FIREBASE AUTH
     // =====================================================
+
 
     try {
-      const firebaseUser = await auth.getUser(uid);
+
+
+      const firebaseUser =
+        await auth.getUser(uid);
+
+
+
 
       if (firebaseUser.disabled) {
+
+
+        await createSecurityLog({
+
+          action:'LOGIN_FAILED',
+
+          username:
+            usernameNormalizado,
+
+          reason:
+            'Firebase Auth deshabilitado'
+
+        });
+
+
+
         return res.status(401).json({
-          error: 'Credenciales incorrectas'
+
+          error:
+            'Credenciales incorrectas'
+
         });
+
+
       }
 
-    } catch (error) {
 
-      if (error.code === 'auth/user-not-found') {
+
+    } catch(error) {
+
+
+      if (
+        error.code ===
+        'auth/user-not-found'
+      ) {
+
+
         await auth.createUser({
+
           uid,
-          disabled: false
+
+          disabled:false
+
         });
+
+
+
       } else {
+
+
         throw error;
+
       }
+
+
     }
 
+
+
+
+
     // =====================================================
-    // 6. CREAR TOKEN DE FIREBASE
+    // 6. CREAR TOKEN
     // =====================================================
 
-    const token = await auth.createCustomToken(uid);
+
+    const token =
+      await auth.createCustomToken(uid);
+
+
+
+
+
+    // =====================================================
+    // 7. LOGIN EXITOSO
+    // =====================================================
+
+
+    await createSecurityLog({
+
+      action:'LOGIN_SUCCESS',
+
+      actorUid:
+        uid,
+
+      username:
+        usernameNormalizado,
+
+      role:
+        profile.role,
+
+      notariaId:
+        profile.notariaId || null
+
+    });
+
+
+
+
 
     return res.status(200).json({
+
       token
+
     });
 
-  } catch (error) {
-    console.error('Login error:', error);
+
+
+
+
+  } catch(error) {
+
+
+    console.error(
+      'Login error:',
+      error
+    );
+
+
 
     return res.status(500).json({
-      error: 'No fue posible iniciar sesión'
+
+      error:
+        'No fue posible iniciar sesión'
+
     });
+
+
   }
+
+
 };
