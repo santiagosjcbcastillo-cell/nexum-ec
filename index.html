@@ -2972,9 +2972,94 @@
 
         function eliminarUsuario(id) {
 
-            Swal.fire({title:'¿Borrar?', showCancelButton:true}).then(async r=>{ if(r.isConfirmed){ await db.collection('users').doc(id).delete(); LOCAL_DB.users=LOCAL_DB.users.filter(u=>u.id!==id); renderCurrentView(); } });
+    Swal.fire({
+        title: '¿Borrar usuario?',
+        text: 'Esta acción eliminará el acceso del usuario.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then(async r => {
+
+        if (r.isConfirmed) {
+
+            try {
+
+                const currentUser = auth.currentUser;
+
+                if (!currentUser) {
+                    throw new Error('Sesión no válida');
+                }
+
+
+                // Obtener token Firebase del usuario actual
+                const token = await currentUser.getIdToken();
+
+
+                const response = await fetch('/api/delete-user', {
+
+                    method: 'POST',
+
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+
+                    body: JSON.stringify({
+                        userId: id
+                    })
+
+                });
+
+
+                const data = await response.json();
+
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.error || 'No se pudo eliminar el usuario'
+                    );
+                }
+
+
+                // Actualizar memoria local
+                LOCAL_DB.users =
+                    LOCAL_DB.users.filter(
+                        u => u.id !== id
+                    );
+
+
+                Swal.fire(
+                    'Eliminado',
+                    'Usuario eliminado correctamente',
+                    'success'
+                );
+
+
+                renderCurrentView();
+
+
+            } catch(error) {
+
+                console.error(
+                    'Error eliminando usuario:',
+                    error
+                );
+
+
+                Swal.fire(
+                    'Error',
+                    error.message,
+                    'error'
+                );
+
+            }
 
         }
+
+    });
+
+}
 
 
 
