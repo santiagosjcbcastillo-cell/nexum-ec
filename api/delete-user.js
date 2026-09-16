@@ -1,5 +1,20 @@
 const { admin, db, auth } = require('../lib/firebase-admin');
 
+
+async function createSecurityLog(data) {
+
+  await db.collection('securityLogs').add({
+
+    ...data,
+
+    timestamp:
+      admin.firestore.FieldValue.serverTimestamp()
+
+  });
+
+}
+
+
 module.exports = async function handler(req, res) {
 
   if (req.method !== 'POST') {
@@ -166,11 +181,26 @@ module.exports = async function handler(req, res) {
 
 
 
-    return res.status(200).json({
-      success:true
-    });
+await createSecurityLog({
+
+  action: "DELETE_USER",
+
+  actorUid: actorUid,
+
+  targetUid: userId,
+
+  username: target.username,
+
+  roleDeleted: target.role
+
+});
 
 
+
+return res.status(200).json({
+  success:true
+});
+    
   } catch(error){
 
     console.error(
